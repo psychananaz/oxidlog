@@ -1,6 +1,7 @@
 use crate::{query::SearchMatch, storage::Entry};
 use colored::Colorize;
 use std::{
+    borrow::Cow,
     fmt::Write as _,
     io::{self, Write},
     ops::Range,
@@ -9,18 +10,22 @@ use std::{
 #[derive(Clone, Copy, Default)]
 pub struct DisplayOptions {
     pub show_time: bool,
+    pub inline_tags: bool,
 }
 
 pub fn format_entry(entry: &Entry, options: DisplayOptions) -> String {
-    let mut body = String::new();
-    for part in entry.body.split_inclusive(char::is_whitespace) {
-        if part.starts_with('#') {
-            body.push_str(&part.bright_green().to_string());
-        } else {
-            body.push_str(part);
-        }
+    format_with_body(entry, options, &entry.body)
+}
+
+fn displayed_body<'a>(entry: &Entry, body: &'a str, options: DisplayOptions) -> Cow<'a, str> {
+    if !options.inline_tags || entry.tags.is_empty() {
+        return Cow::Borrowed(body);
     }
-    format_with_body(entry, options, &body)
+    let mut body = body.to_owned();
+    for tag in &entry.tags {
+        write!(body, " {}", format!("#{}", tag.name).bright_green()).unwrap();
+    }
+    Cow::Owned(body)
 }
 
 fn format_with_body(entry: &Entry, options: DisplayOptions, body: &str) -> String {
@@ -38,9 +43,12 @@ fn format_with_body(entry: &Entry, options: DisplayOptions, body: &str) -> Strin
         )
         .unwrap();
     }
-    for tag in &entry.tags {
-        write!(result, " {}", tag.name.bright_yellow()).unwrap();
+    if !options.inline_tags {
+        for tag in &entry.tags {
+            write!(result, " {}", tag.name.bright_yellow()).unwrap();
+        }
     }
+    let body = displayed_body(entry, body, options);
     write!(result, "\n{body}\n{}", "-".repeat(40)).unwrap();
     result
 }
@@ -100,12 +108,20 @@ pub fn write_search_results(
     )
 }
 
-pub fn write_detail(output: &mut impl Write, entry: &Entry) -> io::Result<()> {
+pub fn write_detail(
+    output: &mut impl Write,
+    entry: &Entry,
+    options: DisplayOptions,
+) -> io::Result<()> {
     writeln!(output, "\n{}", "=".repeat(50))?;
     writeln!(output, "Entry #{}", entry.id)?;
     writeln!(output, "Date: {}", entry.date)?;
-    writeln!(output, "\n{}\n", entry.body)?;
-    if !entry.tags.is_empty() {
+    writeln!(
+        output,
+        "\n{}\n",
+        displayed_body(entry, &entry.body, options)
+    )?;
+    if !options.inline_tags && !entry.tags.is_empty() {
         write!(output, "Tags:")?;
         for tag in &entry.tags {
             write!(output, " #{}", tag.name)?;
@@ -127,11 +143,17 @@ mod tests {
             "first\n  second".into(),
             vec![Tag::new("unique_tag".into())],
         );
-        let formatted = format_entry(&entry, DisplayOptions { show_time: true });
+        let formatted = format_entry(
+            &entry,
+            DisplayOptions {
+                show_time: true,
+                ..DisplayOptions::default()
+            },
+        );
         assert!(formatted.contains("first\n  second"));
         assert!(formatted.lines().next().unwrap().contains("unique_tag"));
         let mut output = Vec::new();
-        write_detail(&mut output, &entry).unwrap();
+        write_detail(&mut output, &entry, DisplayOptions::default()).unwrap();
         let detail = String::from_utf8(output).unwrap();
         assert!(detail.contains("Entry #4"));
         assert!(detail.contains("Tags: #unique_tag"));

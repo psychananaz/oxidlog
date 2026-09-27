@@ -80,6 +80,17 @@ The config file is named `config.toml` and the journal data is stored in `journa
 Set `XLOG_HOME` to override the directory containing `config.toml` and `journal.json`.
 Without this override, debug builds use `.oxidlog` in the project directory and release builds use `.oxidlog` in your home directory.
 
+### Tag display
+
+Hashtags in add/edit input are shortcuts: `hello #work` is stored as body `hello` and tag `work`. Tags are always extracted and stripped from the body, regardless of configuration.
+
+Set `inline_tags` in `[journal_cfg]` to control display only:
+
+- `true`: show tags after the body, for example `hello #work`.
+- `false` (default): show the body and tags separately.
+
+This replaces `body_tags`. View and search use the current display setting without rewriting entries. JSON exports retain the separate body and tags fields.
+
 ## Testing
 
 Run `cargo test` to run all tests. Unit tests live in `#[cfg(test)] mod tests` beside the code in `src/`. This project is a binary crate, so the integration tests in `tests/cli_tests.rs` launch `xlog` and check its output and saved files instead of importing internal modules.

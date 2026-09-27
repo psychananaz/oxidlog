@@ -55,9 +55,9 @@ pub fn execute(args: InitArgs) -> AppResult<()> {
         })?;
 
     // Configure tag style
-    let tag_options = vec!["Body tags (#tag in content)", "Separate tag field"];
+    let tag_options = vec!["Inline tags (after entry text)", "Separate tag field"];
     let tag_selection = Select::new()
-        .with_prompt("How would you like to handle tags?")
+        .with_prompt("Where should tags be displayed?")
         .items(&tag_options)
         .default(0)
         .interact()
@@ -69,7 +69,7 @@ pub fn execute(args: InitArgs) -> AppResult<()> {
     let new_config = Config {
         journal_cfg: JournalConfig {
             show_time,
-            body_tags: tag_selection == 0,
+            inline_tags: tag_selection == 0,
             export_dir,
         },
     };

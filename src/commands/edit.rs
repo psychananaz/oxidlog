@@ -2,7 +2,7 @@ use crate::{
     cli::input,
     content::{parse_content, parse_tags},
     error::{AppError, AppResult},
-    storage::{self, config::Config, Journal},
+    storage::{self, Journal},
 };
 use colored::Colorize;
 use std::io::Write as _;
@@ -12,7 +12,7 @@ pub struct EditArgs {
     pub id: usize,
 }
 
-pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> AppResult<()> {
+pub fn execute(journal: &mut Journal, args: EditArgs) -> AppResult<()> {
     let entry = journal
         .get_entry(args.id)
         .ok_or(AppError::EntryNotFound(args.id))?;
@@ -30,7 +30,7 @@ pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> AppRes
     let content = if body_input.is_empty() {
         None
     } else {
-        Some(parse_content(body_input, config.journal_cfg.body_tags)?)
+        Some(parse_content(body_input)?)
     };
     let tags = if tags_input == "-" {
         Some(Vec::new())

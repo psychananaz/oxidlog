@@ -9,7 +9,8 @@ pub struct Config {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct JournalConfig {
-    pub body_tags: bool,
+    /// Display stored tags after the body instead of in a separate tag field.
+    pub inline_tags: bool,
     pub show_time: bool,
     #[serde(default = "default_export_dir")]
     pub export_dir: String,
@@ -18,7 +19,7 @@ pub struct JournalConfig {
 impl Default for JournalConfig {
     fn default() -> Self {
         Self {
-            body_tags: false,
+            inline_tags: false,
             show_time: false,
             export_dir: default_export_dir(),
         }
@@ -36,7 +37,7 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert!(!config.journal_cfg.body_tags);
+        assert!(!config.journal_cfg.inline_tags);
         assert!(!config.journal_cfg.show_time);
         assert_eq!(config.journal_cfg.export_dir, "exports");
         let parsed: Config = toml::from_str("[journal_cfg]\n").unwrap();
@@ -46,13 +47,13 @@ mod tests {
     #[test]
     fn test_config_serialization() {
         let mut config = Config::default();
-        config.journal_cfg.body_tags = true;
+        config.journal_cfg.inline_tags = true;
         config.journal_cfg.show_time = true;
 
         let serialized = toml::to_string(&config).unwrap();
         let deserialized: Config = toml::from_str(&serialized).unwrap();
 
-        assert!(deserialized.journal_cfg.body_tags);
+        assert!(deserialized.journal_cfg.inline_tags);
         assert!(deserialized.journal_cfg.show_time);
     }
 }

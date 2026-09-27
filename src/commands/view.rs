@@ -37,22 +37,20 @@ pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> AppResult<
             TagMatch::Any
         },
     };
+    let options = DisplayOptions {
+        show_time: config.journal_cfg.show_time,
+        inline_tags: config.journal_cfg.inline_tags,
+    };
     let mut output = std::io::stdout().lock();
     if let Some(id) = args.id {
         let entry = journal.get_entry(id).ok_or(AppError::EntryNotFound(id))?;
-        presentation::write_detail(&mut output, entry)?;
+        presentation::write_detail(&mut output, entry, options)?;
     } else {
         let mut entries = query::select(journal.entries(), &filter);
         if args.recent {
             entries = entries.last().copied().into_iter().collect();
         }
-        presentation::write_entries(
-            &mut output,
-            &entries,
-            DisplayOptions {
-                show_time: config.journal_cfg.show_time,
-            },
-        )?;
+        presentation::write_entries(&mut output, &entries, options)?;
     }
     Ok(())
 }

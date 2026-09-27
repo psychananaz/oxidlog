@@ -43,6 +43,7 @@ pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> AppResul
         &found,
         DisplayOptions {
             show_time: config.journal_cfg.show_time,
+            inline_tags: config.journal_cfg.inline_tags,
         },
     )?;
     Ok(())

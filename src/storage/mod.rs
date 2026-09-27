@@ -280,7 +280,7 @@ mod tests {
 
         // Create test config
         let mut config = Config::default();
-        config.journal_cfg.body_tags = true;
+        config.journal_cfg.inline_tags = true;
 
         // Test saving
         fs::create_dir_all(config_path.parent().unwrap()).unwrap();
@@ -288,7 +288,7 @@ mod tests {
 
         // Test loading
         let loaded_config = load_config_from(&config_path).unwrap();
-        assert!(loaded_config.journal_cfg.body_tags);
+        assert!(loaded_config.journal_cfg.inline_tags);
     }
 
     fn setup_temp_journal() -> (TempDir, PathBuf) {

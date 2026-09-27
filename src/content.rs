@@ -19,7 +19,7 @@ pub fn parse_tags(input: &str) -> Vec<Tag> {
     tags
 }
 
-pub fn parse_content(mut content: String, body_tags: bool) -> AppResult<EntryContent> {
+pub fn parse_content(mut content: String) -> AppResult<EntryContent> {
     content.truncate(content.trim_end().len());
     let leading = content.len() - content.trim_start().len();
     content.drain(..leading);
@@ -36,16 +36,12 @@ pub fn parse_content(mut content: String, body_tags: bool) -> AppResult<EntryCon
             tags.push(tag);
         }
     }
-    let body = if body_tags {
-        content
-            .split_inclusive(char::is_whitespace)
-            .filter(|part| !part.starts_with('#'))
-            .collect::<String>()
-            .trim()
-            .to_owned()
-    } else {
-        content
-    };
+    let body = content
+        .split_inclusive(char::is_whitespace)
+        .filter(|part| !part.starts_with('#'))
+        .collect::<String>()
+        .trim()
+        .to_owned();
     if body.is_empty() {
         return Err(AppError::EmptyBody);
     }
@@ -65,13 +61,10 @@ mod tests {
     }
 
     #[test]
-    fn content_preserves_internal_whitespace_in_both_modes() {
-        for mode in [false, true] {
-            let parsed = parse_content("  first\n  second #work #work  ".into(), mode).unwrap();
-            assert!(parsed.body.starts_with("first\n  second"));
-            assert_eq!(parsed.tags, vec![Tag::new("work".into())]);
-            assert_eq!(parsed.body.contains("#work"), !mode);
-        }
-        assert!(parse_content(" #work ".into(), true).is_err());
+    fn content_extracts_tags_and_preserves_other_internal_whitespace() {
+        let parsed = parse_content("  first\n  second #work #work  ".into()).unwrap();
+        assert_eq!(parsed.body, "first\n  second");
+        assert_eq!(parsed.tags, vec![Tag::new("work".into())]);
+        assert!(parse_content(" #work ".into()).is_err());
     }
 }

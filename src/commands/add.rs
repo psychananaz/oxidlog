@@ -1,7 +1,7 @@
 use crate::{
     content::parse_content,
     error::AppResult,
-    storage::{self, config::Config, Journal},
+    storage::{self, Journal},
 };
 use colored::Colorize;
 use std::io::Write as _;
@@ -11,8 +11,8 @@ pub struct AddArgs {
     pub content: String,
 }
 
-pub fn execute(journal: &mut Journal, args: AddArgs, config: &Config) -> AppResult<()> {
-    let content = parse_content(args.content, config.journal_cfg.body_tags)?;
+pub fn execute(journal: &mut Journal, args: AddArgs) -> AppResult<()> {
+    let content = parse_content(args.content)?;
     let id = journal.add_entry(content.body, content.tags)?;
     storage::save_journal(journal)?;
     writeln!(

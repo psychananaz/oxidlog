@@ -19,7 +19,7 @@ fn journal() -> TempDir {
     fs::write(dir.path().join("journal.json"), "[]").unwrap();
     fs::write(
         dir.path().join("config.toml"),
-        "[journal_cfg]\nbody_tags = false\nshow_time = false\nexport_dir = 'exports'\n",
+        "[journal_cfg]\ninline_tags = false\nshow_time = false\nexport_dir = 'exports'\n",
     )
     .unwrap();
     dir
@@ -82,7 +82,7 @@ fn test_xlog_add() {
     let saved = entries(&dir);
     assert_eq!(saved.as_array().unwrap().len(), 1);
     assert_eq!(saved[0]["id"], 0);
-    assert_eq!(saved[0]["body"], "Test entry #test");
+    assert_eq!(saved[0]["body"], "Test entry");
     assert_eq!(saved[0]["tags"][0]["name"], "test");
 }
 
@@ -322,7 +322,7 @@ fn add_and_edit_share_inline_tag_rules() {
     let dir = journal();
     fs::write(
         dir.path().join("config.toml"),
-        "[journal_cfg]\nbody_tags = true\n",
+        "[journal_cfg]\ninline_tags = true\n",
     )
     .unwrap();
     stdout(&dir, &["add", "body #work #work"]);
@@ -384,7 +384,48 @@ fn colored_search_highlights_only_original_body_matches() {
         .success();
     let output = String::from_utf8_lossy(&assertion.get_output().stdout);
     assert_eq!(output.matches("\u{1b}[42mİ\u{1b}[0m").count(), 2);
-    // Two dotted capitals and the inline tag match; the separate tag header
-    // must not receive search highlighting.
-    assert_eq!(output.matches("\u{1b}[42m").count(), 3);
+    // Tags are metadata and must not receive body-search highlighting.
+    assert_eq!(output.matches("\u{1b}[42m").count(), 2);
+}
+
+#[test]
+fn tag_display_is_independent_of_storage_and_can_be_switched() {
+    for initial in [false, true] {
+        let dir = journal();
+        fs::write(
+            dir.path().join("config.toml"),
+            format!("[journal_cfg]\ninline_tags = {initial}\n"),
+        )
+        .unwrap();
+        stdout(&dir, &["add", "hello #work"]);
+        command(&dir)
+            .args(["edit", "0"])
+            .write_stdin("updated #home\n-\n")
+            .assert()
+            .success();
+        let original = fs::read(dir.path().join("journal.json")).unwrap();
+        assert_eq!(entries(&dir)[0]["body"], "updated");
+        assert_eq!(
+            entries(&dir)[0]["tags"],
+            serde_json::json!([{"name":"home"}])
+        );
+        for inline in [true, false] {
+            fs::write(
+                dir.path().join("config.toml"),
+                format!("[journal_cfg]\ninline_tags = {inline}\n"),
+            )
+            .unwrap();
+            for args in [vec!["view"], vec!["view", "0"], vec!["search", "updated"]] {
+                let output = stdout(&dir, &args);
+                if inline {
+                    assert!(output.contains("updated #home"), "{output}");
+                    assert!(!output.contains("Tags:"));
+                } else {
+                    assert!(!output.contains("updated #home"), "{output}");
+                    assert!(output.contains("home"));
+                }
+            }
+            assert_eq!(fs::read(dir.path().join("journal.json")).unwrap(), original);
+        }
+    }
 }

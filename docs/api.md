@@ -7,7 +7,7 @@ OxidLog is a binary crate. These modules are internal APIs; there is no public R
 | `cli` | Parse arguments, load the files each command needs, and attach command context to errors. |
 | `cli::input` | Prompt for edit input and report input/output failures. |
 | `commands` | Coordinate a command's validation, journal operations, persistence, and output. |
-| `content` | Parse body text and normalize/deduplicate tags for add and edit. |
+| `content` | Extract, strip, and deduplicate hashtag shortcuts for add and edit, independently of config. |
 | `storage::journal` | Own entries and enforce identity and mutation rules without performing file I/O. |
 | `query` | Apply shared date/tag filters and select borrowed entries. |
 | `matching` | Prepare text queries and locate matches in the original body. |
@@ -21,7 +21,7 @@ OxidLog is a binary crate. These modules are internal APIs; there is no public R
 
 `query::search(&[Entry], &SearchQuery)` returns `Vec<SearchMatch<'_>>`. Each result borrows an entry and owns a list of byte ranges identifying matches in that entry's original body. Search neither prints nor formats entries. Once query construction has validated the date range, selection is infallible; no results is a normal empty vector.
 
-The search command prepares a query once, selects results, and passes them to `presentation::write_search_results`. The view command uses the same date/tag filter and calls `presentation::write_entries` or `write_detail`. Formatting reads entry data and uses small, copyable `DisplayOptions`; it does not own or clone the journal configuration.
+The search command prepares a query once, selects results, and passes them to `presentation::write_search_results`. The view command uses the same date/tag filter and calls `presentation::write_entries` or `write_detail`. Formatting reads entry data and uses small, copyable `DisplayOptions`; it does not own or clone the journal configuration. `inline_tags` controls whether stored tags appear after the body or separately, consistently for list, detail, and search output. It replaces `body_tags` and never influences parsing, storage, or export. Add/edit do not load display configuration.
 
 Case-sensitive text matching borrows the body. Case-insensitive matching lowercases it and maps matches back to the original character boundaries. This uses Unicode lowercasing, not full Unicode case folding or normalization. Fuzzy matching means characters appearing in order, not edit-distance ranking. Only body text is searched and highlighted, not dates or the separate tag header. Color follows the `colored` crate's terminal/environment policy.
 

@@ -96,7 +96,7 @@ fn dispatch(command: Commands) -> AppResult<()> {
         Commands::Init { args } => commands::init::execute(args),
         Commands::Add { args } => {
             let mut journal = storage::load_journal()?;
-            commands::add::execute(&mut journal, args, &storage::load_config()?)
+            commands::add::execute(&mut journal, args)
         }
         Commands::Remove { args } => {
             let mut journal = storage::load_journal()?;
@@ -108,7 +108,7 @@ fn dispatch(command: Commands) -> AppResult<()> {
         }
         Commands::Edit { args } => {
             let mut journal = storage::load_journal()?;
-            commands::edit::execute(&mut journal, args, &storage::load_config()?)
+            commands::edit::execute(&mut journal, args)
         }
         Commands::Search { args } => {
             let journal = storage::load_journal()?;
