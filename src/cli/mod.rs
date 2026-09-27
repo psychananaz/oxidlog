@@ -1,3 +1,5 @@
+pub mod input;
+
 use crate::commands::{backup, init};
 use crate::error::JotResult;
 use crate::{commands, storage};

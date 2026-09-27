@@ -339,3 +339,18 @@ fn add_and_edit_share_inline_tag_rules() {
         serde_json::json!([{"name":"work"}, {"name":"home"}])
     );
 }
+
+#[test]
+fn recent_view_applies_filters_and_missing_id_is_an_error() {
+    let dir = journal();
+    stdout(&dir, &["add", "first #work"]);
+    stdout(&dir, &["add", "second #home"]);
+    let output = stdout(&dir, &["view", "--recent", "--tags", "work"]);
+    assert!(output.contains("first"));
+    assert!(!output.contains("second"));
+    command(&dir).args(["view", "999"]).assert().failure();
+    command(&dir)
+        .args(["view", "0", "--recent"])
+        .assert()
+        .failure();
+}

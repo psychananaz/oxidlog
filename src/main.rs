@@ -5,8 +5,9 @@ mod commands;
 mod content;
 mod error;
 mod matching;
+mod presentation;
+mod query;
 mod storage;
-mod utils;
 
 fn main() {
     if let Err(e) = cli::run() {

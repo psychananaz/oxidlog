@@ -1,6 +1,6 @@
 use crate::error::{JotError, JotResult};
+use crate::query::{self, DateRange};
 use crate::storage::{self, Journal};
-use crate::utils::{self, DateRange};
 use chrono::NaiveDate;
 use std::ops::RangeInclusive;
 
@@ -10,9 +10,9 @@ pub struct RemoveArgs {
     /// Inclusive ID range, written start..end
     #[clap(short, long, value_parser = parse_id_range)]
     pub range: Option<RangeInclusive<usize>>,
-    #[clap(short, long, value_parser = utils::parse_date)]
+    #[clap(short, long, value_parser = query::parse_date)]
     pub from: Option<NaiveDate>,
-    #[clap(short, long, value_parser = utils::parse_date)]
+    #[clap(short, long, value_parser = query::parse_date)]
     pub to: Option<NaiveDate>,
 }
 

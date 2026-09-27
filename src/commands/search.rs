@@ -1,18 +1,20 @@
 use crate::{
     error::JotResult,
+    matching::TextQuery,
+    presentation::{self, DisplayOptions},
+    query::{self, DateRange, EntryFilter, SearchQuery, TagMatch},
     storage::{config::Config, Journal, Tag},
-    utils::{self, TagMatch},
 };
 
 // TODO: add regex search
-#[derive(clap::Args, Clone)]
+#[derive(clap::Args)]
 pub struct SearchArgs {
     pub query: String,
     #[clap(long, value_delimiter = ' ')]
     pub tags: Vec<String>,
-    #[clap(long, value_parser = utils::parse_date)]
+    #[clap(long, value_parser = query::parse_date)]
     pub from: Option<chrono::NaiveDate>,
-    #[clap(long, value_parser = utils::parse_date)]
+    #[clap(long, value_parser = query::parse_date)]
     pub to: Option<chrono::NaiveDate>,
     #[clap(short, long)]
     pub fuzzy: bool,
@@ -22,51 +24,26 @@ pub struct SearchArgs {
     pub case_sensitive: bool,
 }
 
-fn highlight(body: &str, ranges: &[std::ops::Range<usize>]) -> String {
-    use colored::Colorize;
-    let mut result = String::new();
-    let mut cursor = 0;
-    for range in ranges {
-        result.push_str(&body[cursor..range.start]);
-        result.push_str(&body[range.clone()].on_green().to_string());
-        cursor = range.end;
-    }
-    result.push_str(&body[cursor..]);
-    result
-}
-
 pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> JotResult<()> {
-    let dates = utils::DateRange::new(args.from, args.to)?;
-    let query = crate::matching::TextQuery::new(args.query, args.case_sensitive, args.fuzzy);
-    let tags: Vec<_> = args.tags.into_iter().map(Tag::new).collect();
-    let found: Vec<String> = journal
-        .get_entries()
-        .iter()
-        .filter_map(|entry| {
-            let mode = if args.all {
+    let query = SearchQuery {
+        filter: EntryFilter {
+            dates: DateRange::new(args.from, args.to)?,
+            tags: args.tags.into_iter().map(Tag::new).collect(),
+            tag_match: if args.all {
                 TagMatch::All
             } else {
                 TagMatch::Any
-            };
-            if !dates.contains(entry.date) || !utils::do_tags_match(&tags, &entry.tags, mode) {
-                return None;
-            }
-            let ranges = query.find(&entry.body)?;
-            let body = highlight(&entry.body, &ranges);
-            Some(utils::format_entry_with_body(
-                entry,
-                config.journal_cfg.clone(),
-                &body,
-            ))
-        })
-        .collect();
-    if found.is_empty() {
-        println!("No entries found.");
-    } else {
-        println!("{} entries found", found.len());
-        for entry in found {
-            println!("{entry}");
-        }
-    }
+            },
+        },
+        text: TextQuery::new(args.query, args.case_sensitive, args.fuzzy),
+    };
+    let found = query::search(journal.get_entries(), &query);
+    presentation::write_search_results(
+        &mut std::io::stdout().lock(),
+        &found,
+        DisplayOptions {
+            show_time: config.journal_cfg.show_time,
+        },
+    )?;
     Ok(())
 }
