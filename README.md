@@ -19,6 +19,6 @@ xlog add "Starting my journey with OxidLog #tag #journal"
 - View it
 xlog view
 ```
-Use the help command or flag to view what the arguments and more information about the command.
+Use the help command or flag to view all the arguments and information for the command.
 - Example:
 `xlog help add` or `xlog add --help|-h`
