@@ -10,38 +10,16 @@ pub struct SearchArgs {
     pub query: String,
     #[clap(long, value_delimiter = ' ')]
     pub tags: Vec<String>,
-    #[clap(long)]
-    pub from: Option<String>,
-    #[clap(long)]
-    pub to: Option<String>,
+    #[clap(long, value_parser = utils::parse_date)]
+    pub from: Option<chrono::NaiveDate>,
+    #[clap(long, value_parser = utils::parse_date)]
+    pub to: Option<chrono::NaiveDate>,
     #[clap(short, long)]
     pub fuzzy: bool,
     #[clap(short, long)]
     pub all: bool,
     #[clap(short, long)]
     pub case_sensitive: bool,
-}
-
-fn check_date_range(
-    entry_date: chrono::NaiveDate,
-    from: &Option<String>,
-    to: &Option<String>,
-) -> bool {
-    if let Some(from_date) = from {
-        let date = utils::parse_date(from_date);
-        if date > entry_date {
-            return false;
-        }
-    }
-
-    if let Some(to_date) = to {
-        let date = utils::parse_date(to_date);
-        if date < entry_date {
-            return false;
-        }
-    }
-
-    true
 }
 
 fn check_content_match(content: &str, term: &str, fuzzy: bool) -> bool {
@@ -71,6 +49,7 @@ fn print_results(found: Vec<String>, term: &str) {
 }
 
 pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> JotResult<()> {
+    let dates = utils::DateRange::new(args.from, args.to)?;
     let term = if args.case_sensitive {
         args.query
     } else {
@@ -92,7 +71,7 @@ pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> JotResul
                 };
 
                 let content_matches = check_content_match(&content, &term, args.fuzzy);
-                let dates_match = check_date_range(e.date, &args.from, &args.to);
+                let dates_match = dates.contains(e.date);
 
                 let match_type = if args.all {
                     TagMatch::All

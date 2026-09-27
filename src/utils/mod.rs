@@ -72,8 +72,32 @@ pub fn parse_tags(tags: &str) -> Vec<Tag> {
 /// # Returns
 ///
 /// A `NaiveDate` struct representing the parsed date.
-pub fn parse_date(date: &str) -> chrono::NaiveDate {
-    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap()
+pub fn parse_date(date: &str) -> Result<chrono::NaiveDate, chrono::ParseError> {
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+}
+
+#[derive(Default)]
+pub struct DateRange {
+    from: Option<chrono::NaiveDate>,
+    to: Option<chrono::NaiveDate>,
+}
+
+impl DateRange {
+    pub fn new(
+        from: Option<chrono::NaiveDate>,
+        to: Option<chrono::NaiveDate>,
+    ) -> crate::error::JotResult<Self> {
+        if matches!((from, to), (Some(from), Some(to)) if from > to) {
+            return Err(crate::error::JotError::CommandError(
+                "Start date must not be after end date".into(),
+            ));
+        }
+        Ok(Self { from, to })
+    }
+
+    pub fn contains(&self, date: chrono::NaiveDate) -> bool {
+        self.from.is_none_or(|from| date >= from) && self.to.is_none_or(|to| date <= to)
+    }
 }
 
 /// Formats a journal entry into a string for display.
@@ -255,7 +279,7 @@ mod tests {
     #[test]
     fn test_parse_date() {
         let date_str = "2023-09-15";
-        let date = parse_date(date_str);
+        let date = parse_date(date_str).unwrap();
         assert_eq!(date, chrono::NaiveDate::from_ymd_opt(2023, 9, 15).unwrap());
     }
 

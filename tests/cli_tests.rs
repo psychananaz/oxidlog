@@ -185,3 +185,55 @@ fn duplicate_ids_are_rejected_without_modifying_journal() {
     assert!(String::from_utf8_lossy(&assertion.get_output().stderr).contains("Duplicate entry ID"));
     assert_eq!(entries(&dir), invalid);
 }
+
+#[test]
+fn bulk_removal_saves_once_and_accepts_gaps() {
+    let dir = journal();
+    for _ in 0..4 {
+        add_entry(&dir);
+    }
+    stdout(&dir, &["remove", "1"]);
+    let original = entries(&dir);
+    stdout(&dir, &["remove", "--range", "0..2"]);
+    assert_eq!(entries(&dir).as_array().unwrap().len(), 1);
+    assert_eq!(entries(&dir)[0]["id"], 3);
+    let backup: Value =
+        serde_json::from_str(&fs::read_to_string(dir.path().join("journal.json.bak")).unwrap())
+            .unwrap();
+    assert_eq!(backup, original);
+}
+
+#[test]
+fn invalid_removal_does_not_partially_delete() {
+    let dir = journal();
+    add_entry(&dir);
+    let original = entries(&dir);
+    for args in [
+        vec!["remove", "9", "--range", "0..9"],
+        vec!["remove", "--range", "2..0"],
+        vec!["remove", "0", "--from", "bad-date"],
+    ] {
+        command(&dir).args(args).assert().failure();
+        assert_eq!(entries(&dir), original);
+    }
+}
+
+#[test]
+fn invalid_dates_fail_even_on_empty_journals() {
+    let dir = journal();
+    for cmd in ["view", "search", "remove"] {
+        for dates in [
+            ["--from", "invalid", "--to", "2025-01-01"],
+            ["--from", "2025-02-01", "--to", "2025-01-01"],
+        ] {
+            let mut process = command(&dir);
+            process.arg(cmd);
+            if cmd == "search" {
+                process.arg("anything");
+            }
+            let assertion = process.args(dates).assert().failure();
+            let error = String::from_utf8_lossy(&assertion.get_output().stderr);
+            assert!(!error.contains("panicked"), "{error}");
+        }
+    }
+}

@@ -9,11 +9,11 @@ pub struct ViewArgs {
     /// ID of the specific entry to view
     pub id: Option<usize>,
     /// View entries starting from this date
-    #[clap(short, long)]
-    pub from: Option<String>,
+    #[clap(short, long, value_parser = utils::parse_date)]
+    pub from: Option<chrono::NaiveDate>,
     /// View entries up to this date
-    #[clap(short, long)]
-    pub to: Option<String>,
+    #[clap(short, long, value_parser = utils::parse_date)]
+    pub to: Option<chrono::NaiveDate>,
     /// Tags to filter entries by
     #[clap(long, value_delimiter = ' ', num_args = 1)]
     pub tags: Vec<String>,
@@ -43,21 +43,16 @@ fn view_recent(journal: &Journal, config: &Config) {
     }
 }
 
-fn filter_entries<'a>(entries: &'a [Entry], args: &ViewArgs) -> Vec<&'a Entry> {
+fn filter_entries<'a>(
+    entries: &'a [Entry],
+    args: &ViewArgs,
+    dates: &utils::DateRange,
+) -> Vec<&'a Entry> {
     entries
         .iter()
         .filter(|e| {
-            if let Some(from) = &args.from {
-                let parsed_date = utils::parse_date(from);
-                if e.date < parsed_date {
-                    return false;
-                }
-            }
-            if let Some(to) = &args.to {
-                let parsed_date = utils::parse_date(to);
-                if e.date > parsed_date {
-                    return false;
-                }
+            if !dates.contains(e.date) {
+                return false;
             }
             let match_type = if args.all {
                 TagMatch::All
@@ -79,6 +74,7 @@ fn filter_entries<'a>(entries: &'a [Entry], args: &ViewArgs) -> Vec<&'a Entry> {
 }
 
 pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> JotResult<()> {
+    let dates = utils::DateRange::new(args.from, args.to)?;
     if let Some(id) = args.id {
         if args.recent {
             return Err(JotError::CommandError(
@@ -90,7 +86,7 @@ pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> JotResult<
     } else if args.recent {
         view_recent(journal, config);
     } else {
-        let entries = filter_entries(journal.get_entries(), &args);
+        let entries = filter_entries(journal.get_entries(), &args, &dates);
         print_formatted_entries(&entries, config);
     }
 
