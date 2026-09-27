@@ -4,7 +4,7 @@ use crate::storage::config::{Config, JournalConfig};
 use dialoguer::{Confirm, Input, Select};
 use std::path::PathBuf;
 
-#[derive(clap::Args, Clone)]
+#[derive(clap::Args)]
 pub struct InitArgs {
     /// Custom export directory path
     #[arg(short, long)]

@@ -54,10 +54,7 @@ pub struct DateRange {
 }
 
 impl DateRange {
-    pub fn new(
-        from: Option<chrono::NaiveDate>,
-        to: Option<chrono::NaiveDate>,
-    ) -> JotResult<Self> {
+    pub fn new(from: Option<chrono::NaiveDate>, to: Option<chrono::NaiveDate>) -> JotResult<Self> {
         if matches!((from, to), (Some(from), Some(to)) if from > to) {
             return Err(crate::error::JotError::CommandError(
                 "Start date must not be after end date".into(),

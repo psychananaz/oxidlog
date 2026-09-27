@@ -22,13 +22,13 @@ impl std::str::FromStr for BackupAction {
     }
 }
 
-#[derive(clap::Args, Clone)]
+#[derive(clap::Args)]
 pub struct BackupArgs {
     #[clap(default_value = "create")]
     action: BackupAction,
 }
 
-pub fn execute(journal: &mut Journal, args: BackupArgs) -> JotResult<()> {
+pub fn execute(journal: &Journal, args: BackupArgs) -> JotResult<()> {
     match args.action {
         BackupAction::Create => create_backup(journal),
         BackupAction::Restore => restore_backup(journal),
@@ -47,7 +47,7 @@ fn create_backup(journal: &Journal) -> JotResult<()> {
     Ok(())
 }
 
-fn restore_backup(journal: &mut Journal) -> JotResult<()> {
+fn restore_backup(journal: &Journal) -> JotResult<()> {
     let backup = storage::Backup::from_journal(journal);
     backup.restore()?;
 

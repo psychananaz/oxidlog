@@ -235,9 +235,7 @@ mod tests {
         assert!(load_config_from(&dir.path().join(CONFIG_FILE)).is_ok());
         let path = dir.path().join(JOURNAL_FILE);
         let mut journal = load_from_path(path.clone()).unwrap();
-        journal
-            .add_entry(Entry::new(0, "keep a backup".into(), vec![]))
-            .unwrap();
+        journal.add_entry("keep a backup".into(), vec![]).unwrap();
         save_journal(&journal).unwrap();
         init_at(dir.path(), &Config::default()).unwrap();
         assert!(load_from_path(path.clone()).unwrap().entries().is_empty());
@@ -295,11 +293,7 @@ mod tests {
         // Create and save a journal with one entry
         let mut journal = Journal::new(path.clone());
         journal
-            .add_entry(Entry::new(
-                0,
-                "Test entry".to_string(),
-                vec![Tag::new("test".to_string())],
-            ))
+            .add_entry("Test entry".to_string(), vec![Tag::new("test".to_string())])
             .unwrap();
         save_journal(&journal).unwrap();
 

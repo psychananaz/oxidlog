@@ -102,12 +102,12 @@ pub fn run() -> JotResult<()> {
             commands::search::execute(&journal, args, &storage::load_config()?)
         }
         Commands::Export { args } => {
-            let mut journal = storage::load_journal()?;
-            commands::export::execute(&mut journal, args, &storage::load_config()?)
+            let journal = storage::load_journal()?;
+            commands::export::execute(&journal, args, &storage::load_config()?)
         }
         Commands::Backup { args } => {
-            let mut journal = storage::Journal::new(storage::get_journal_path()?);
-            commands::backup::execute(&mut journal, args)
+            let journal = storage::Journal::new(storage::get_journal_path()?);
+            commands::backup::execute(&journal, args)
         }
     }
 }

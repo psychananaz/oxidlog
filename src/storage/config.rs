@@ -6,7 +6,7 @@ pub struct Config {
     pub journal_cfg: JournalConfig,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct JournalConfig {
     pub body_tags: bool,

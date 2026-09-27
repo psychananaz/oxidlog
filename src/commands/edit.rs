@@ -31,22 +31,14 @@ pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> JotRes
     } else {
         Some(parse_content(body_input, config.journal_cfg.body_tags)?)
     };
-    let entry = journal
-        .get_entry_mut(args.id)
-        .ok_or_else(|| JotError::EditError(format!("Entry with ID {} not found", args.id)))?;
-    if tags_input == "-" {
-        entry.tags.clear();
-    } else if !tags_input.is_empty() {
-        entry.tags = parse_tags(&tags_input);
-    }
-    if let Some(content) = content {
-        entry.body = content.body;
-        for tag in content.tags {
-            if !entry.tags.contains(&tag) {
-                entry.tags.push(tag);
-            }
-        }
-    }
+    let tags = if tags_input == "-" {
+        Some(Vec::new())
+    } else if tags_input.is_empty() {
+        None
+    } else {
+        Some(parse_tags(&tags_input))
+    };
+    journal.edit_entry(args.id, content, tags)?;
     storage::save_journal(journal)?;
     println!("{}", "Entry updated!".green());
     Ok(())

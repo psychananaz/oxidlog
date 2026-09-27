@@ -1,8 +1,11 @@
-use crate::error::{JotError, JotResult};
+use crate::{
+    content::EntryContent,
+    error::{JotError, JotResult},
+};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Hash, Eq)]
@@ -88,17 +91,20 @@ impl Journal {
         Ok(Self { path, entries })
     }
 
-    pub fn path(&self) -> &PathBuf {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
-    pub fn entries(&self) -> &Vec<Entry> {
+    pub fn entries(&self) -> &[Entry] {
         &self.entries
     }
 
-    pub fn add_entry(&mut self, entry: Entry) -> JotResult<usize> {
+    pub fn add_entry(&mut self, body: String, tags: Vec<Tag>) -> JotResult<usize> {
+        if body.trim().is_empty() {
+            return Err(JotError::AddError("Entry body cannot be empty".into()));
+        }
         let id = self.next_id()?;
-        let entry = Entry { id, ..entry };
+        let entry = Entry::new(id, body, tags);
 
         self.entries.push(entry);
         Ok(id)
@@ -112,25 +118,42 @@ impl Journal {
         }
     }
 
-    pub fn update_entry(&mut self, entry: Entry) {
-        if let Some(index) = self.entries.iter().position(|e| e.id == entry.id) {
-            self.entries[index] = entry;
+    /// Apply editable fields without allowing callers to replace IDs or timestamps.
+    pub fn edit_entry(
+        &mut self,
+        id: usize,
+        content: Option<EntryContent>,
+        tags: Option<Vec<Tag>>,
+    ) -> JotResult<()> {
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.id == id)
+            .ok_or_else(|| JotError::EditError(format!("Entry with ID {id} not found")))?;
+        if let Some(content) = &content {
+            if content.body.trim().is_empty() {
+                return Err(JotError::EditError("Entry body cannot be empty".into()));
+            }
         }
+        if let Some(tags) = tags {
+            entry.tags = tags;
+        }
+        if let Some(content) = content {
+            entry.body = content.body;
+            for tag in content.tags {
+                if !entry.tags.contains(&tag) {
+                    entry.tags.push(tag);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn get_entry(&self, id: usize) -> Option<&Entry> {
         self.entries.iter().find(|e| e.id == id)
     }
 
-    pub fn get_entry_mut(&mut self, id: usize) -> Option<&mut Entry> {
-        self.entries.iter_mut().find(|entry| entry.id == id)
-    }
-
-    pub fn get_entries(&self) -> &[Entry] {
-        &self.entries
-    }
-
-    pub fn next_id(&self) -> JotResult<usize> {
+    fn next_id(&self) -> JotResult<usize> {
         match self.entries.iter().map(|entry| entry.id).max() {
             Some(id) => id
                 .checked_add(1)
@@ -176,18 +199,17 @@ mod tests {
     #[test]
     fn test_journal_operations() {
         let path = PathBuf::from("test_journal.json");
-        let mut journal = Journal::new(path.clone());
+        let mut journal = Journal::new(path);
 
         // Test adding entries
         journal
-            .add_entry(Entry::new(0, "First entry".to_string(), vec![]))
+            .add_entry("First entry".to_string(), vec![])
             .unwrap();
         journal
-            .add_entry(Entry::new(
-                0,
+            .add_entry(
                 "Second entry".to_string(),
                 vec![Tag::new("tag1".to_string())],
-            ))
+            )
             .unwrap();
 
         assert_eq!(journal.entries().len(), 2);
@@ -200,25 +222,28 @@ mod tests {
         assert_eq!(journal.entries().len(), 1);
 
         // Test updating entries
-        let mut entry = journal.get_entry(1).unwrap().clone();
-        entry.body = "Updated entry".to_string();
-        journal.update_entry(entry);
+        journal
+            .edit_entry(
+                1,
+                Some(EntryContent {
+                    body: "Updated entry".into(),
+                    tags: vec![],
+                }),
+                None,
+            )
+            .unwrap();
         assert_eq!(journal.get_entry(1).unwrap().body, "Updated entry");
     }
 
     #[test]
     fn test_journal_comprehensive_operations() {
         let path = PathBuf::from("test_journal.json");
-        let mut journal = Journal::new(path.clone());
+        let mut journal = Journal::new(path);
 
         // Test sequential adding and ID assignment
         for i in 0..3 {
             journal
-                .add_entry(Entry::new(
-                    0, // ID will be reassigned
-                    format!("Entry {}", i),
-                    vec![Tag::new(format!("tag{}", i))],
-                ))
+                .add_entry(format!("Entry {}", i), vec![Tag::new(format!("tag{}", i))])
                 .unwrap();
         }
 
@@ -238,10 +263,16 @@ mod tests {
         assert!(journal.get_entry(1).is_none());
 
         // Test entry update
-        let mut entry = journal.get_entry(2).unwrap().clone();
-        entry.body = "Updated content".to_string();
-        entry.tags = vec![Tag::new("updated".to_string())];
-        journal.update_entry(entry);
+        journal
+            .edit_entry(
+                2,
+                Some(EntryContent {
+                    body: "Updated content".into(),
+                    tags: vec![],
+                }),
+                Some(vec![Tag::new("updated".into())]),
+            )
+            .unwrap();
 
         let updated = journal.get_entry(2).unwrap();
         assert_eq!(updated.body, "Updated content");
@@ -257,20 +288,11 @@ mod tests {
         assert_eq!(journal.next_id().unwrap(), 0);
         assert!(journal.get_entry(0).is_none());
         assert!(journal.remove_entry(0).is_none());
-        assert_eq!(journal.get_entries().len(), 0);
+        assert_eq!(journal.entries().len(), 0);
 
-        // Test with empty content and tags
-        journal
-            .add_entry(Entry::new(0, String::new(), vec![]))
-            .unwrap();
-        let empty_entry = journal.get_entry(0).unwrap();
-        assert_eq!(empty_entry.body, "");
-        assert!(empty_entry.tags.is_empty());
-
-        // Test updating non-existent entry
-        let non_existent = Entry::new(999, "Non-existent".to_string(), vec![]);
-        journal.update_entry(non_existent);
-        assert!(journal.get_entry(999).is_none());
+        assert!(journal.add_entry(String::new(), vec![]).is_err());
+        assert!(journal.edit_entry(999, None, None).is_err());
+        assert!(journal.entries().is_empty());
     }
 
     #[test]
@@ -281,15 +303,14 @@ mod tests {
         // Add multiple entries for the same day
         for i in 0..3 {
             journal
-                .add_entry(Entry::new(
-                    i,
+                .add_entry(
                     format!("Same day entry {}", i),
                     vec![Tag::new("same_day".to_string())],
-                ))
+                )
                 .unwrap();
         }
 
-        let entries = journal.get_entries();
+        let entries = journal.entries();
         let first_date = entries[0].date;
 
         // Verify all entries have the same date
@@ -303,9 +324,7 @@ mod tests {
         let mut journal = Journal::new(path);
 
         assert_eq!(journal.next_id().unwrap(), 0);
-        journal
-            .add_entry(Entry::new(0, "Entry".to_string(), vec![]))
-            .unwrap();
+        journal.add_entry("Entry".to_string(), vec![]).unwrap();
         assert_eq!(journal.next_id().unwrap(), 1);
     }
 }

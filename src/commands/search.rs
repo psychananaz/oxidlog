@@ -37,7 +37,7 @@ pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> JotResul
         },
         text: TextQuery::new(args.query, args.case_sensitive, args.fuzzy),
     };
-    let found = query::search(journal.get_entries(), &query);
+    let found = query::search(journal.entries(), &query);
     presentation::write_search_results(
         &mut std::io::stdout().lock(),
         &found,

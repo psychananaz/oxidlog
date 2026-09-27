@@ -44,7 +44,7 @@ pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> JotResult<
             .ok_or_else(|| JotError::CommandError(format!("Entry with ID {id} not found")))?;
         presentation::write_detail(&mut output, entry)?;
     } else {
-        let mut entries = query::select(journal.get_entries(), &filter);
+        let mut entries = query::select(journal.entries(), &filter);
         if args.recent {
             entries = entries.last().copied().into_iter().collect();
         }

@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(clap::Args, Clone)]
+#[derive(clap::Args)]
 pub struct ExportArgs {
     #[clap(value_enum)]
     /// The format to export the journal in (json, csv, plain)
@@ -26,8 +26,8 @@ pub enum ExportFormat {
     Plain,
 }
 
-pub fn execute(journal: &mut Journal, args: ExportArgs, config: &Config) -> JotResult<()> {
-    let entries = journal.get_entries();
+pub fn execute(journal: &Journal, args: ExportArgs, config: &Config) -> JotResult<()> {
+    let entries = journal.entries();
     let export_dir = journal
         .path()
         .parent()

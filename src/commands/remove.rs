@@ -4,7 +4,7 @@ use crate::storage::{self, Journal};
 use chrono::NaiveDate;
 use std::ops::RangeInclusive;
 
-#[derive(clap::Args, Clone, Debug)]
+#[derive(clap::Args, Debug)]
 pub struct RemoveArgs {
     pub id: Option<usize>,
     /// Inclusive ID range, written start..end
@@ -39,7 +39,7 @@ fn select_ids(journal: &Journal, args: &RemoveArgs) -> JotResult<Vec<usize>> {
     }
     let has_dates = args.from.is_some() || args.to.is_some();
     let mut ids: Vec<_> = journal
-        .get_entries()
+        .entries()
         .iter()
         .filter(|entry| {
             Some(entry.id) == args.id
