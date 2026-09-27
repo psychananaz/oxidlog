@@ -210,3 +210,75 @@ pub fn print_single_entry(entry: &Entry) {
     }
     println!("{}", "=".repeat(50));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_do_tags_match_any() {
+        let query_tags = vec![
+            Tag::new("test".to_string()),
+            Tag::new("example".to_string()),
+        ];
+        let entry_tags = vec![
+            Tag::new("example".to_string()),
+            Tag::new("sample".to_string()),
+        ];
+        assert!(do_tags_match(&query_tags, &entry_tags, TagMatch::Any));
+    }
+
+    #[test]
+    fn test_do_tags_match_all() {
+        let query_tags = vec![
+            Tag::new("test".to_string()),
+            Tag::new("example".to_string()),
+        ];
+        let entry_tags = vec![
+            Tag::new("test".to_string()),
+            Tag::new("example".to_string()),
+            Tag::new("sample".to_string()),
+        ];
+        assert!(do_tags_match(&query_tags, &entry_tags, TagMatch::All));
+    }
+
+    #[test]
+    fn test_parse_tags() {
+        let tags_str = "test example sample";
+        let tags = parse_tags(tags_str);
+        assert_eq!(tags.len(), 3);
+        assert_eq!(tags[0].name, "test");
+        assert_eq!(tags[1].name, "example");
+        assert_eq!(tags[2].name, "sample");
+    }
+
+    #[test]
+    fn test_parse_date() {
+        let date_str = "2023-09-15";
+        let date = parse_date(date_str);
+        assert_eq!(date, chrono::NaiveDate::from_ymd_opt(2023, 9, 15).unwrap());
+    }
+
+    #[test]
+    fn test_format_entry() {
+        let entry = Entry::new(
+            1,
+            "Test entry".to_string(),
+            vec![Tag::new("unique_tag".to_string())],
+        );
+        let config = JournalConfig {
+            body_tags: true,
+            show_time: true,
+            export_dir: "exports".to_string(),
+        };
+        let formatted = format_entry(&entry, config);
+        assert!(formatted.contains("Test entry"));
+        assert!(formatted.lines().next().unwrap().contains("unique_tag"));
+    }
+
+    #[test]
+    fn test_fuzzy_match() {
+        assert!(fuzzy_match("fuzzy matching", "fuz mat"));
+        assert!(!fuzzy_match("fuzzy matching", "fuzzy not matching"));
+    }
+}

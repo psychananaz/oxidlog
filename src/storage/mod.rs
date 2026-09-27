@@ -92,7 +92,9 @@ pub fn load_from_path(path: PathBuf) -> JotResult<Journal> {
 
 pub fn save_journal(journal: &Journal) -> JotResult<()> {
     let backup = Backup::from_journal(journal);
-    backup.create()?;
+    if journal.path().exists() {
+        backup.create()?;
+    }
 
     // Serialize entries
     let serialized_entries =
@@ -116,6 +118,10 @@ pub fn save_journal(journal: &Journal) -> JotResult<()> {
 
 /// Get the directory where the journal is stored
 pub fn get_journal_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(path) = std::env::var_os("XLOG_HOME") {
+        return Ok(PathBuf::from(path));
+    }
+
     let mut path;
     if cfg!(debug_assertions) {
         path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -154,16 +160,8 @@ pub fn init_journal(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Modify journal_exists to accept an optional path for testing
 pub fn journal_exists() -> bool {
-    if cfg!(test) {
-        // During tests, this will be handled differently
-        return false;
-    }
-
-    let home_dir = dirs::home_dir().expect("Could not find home directory");
-    let journal_dir = home_dir.join(JOURNAL_DIR);
-    journal_dir.exists()
+    get_journal_path().is_ok_and(|path| path.is_file())
 }
 
 // ! Config Related
@@ -259,24 +257,6 @@ mod tests {
     }
 
     #[test]
-    fn test_journal_operations() {
-        let (_temp_dir, journal_path, _) = setup_test_env();
-
-        // Test creating new journal
-        let mut journal = Journal::new(journal_path.clone());
-        journal.add_entry(Entry::new(0, "Test entry".to_string(), vec![]));
-
-        // Test saving
-        save_journal(&journal).unwrap();
-        assert!(journal_path.exists());
-
-        // Test loading
-        let loaded_journal = load_from_path(journal_path).unwrap();
-        assert_eq!(loaded_journal.entries().len(), 1);
-        assert_eq!(loaded_journal.entries()[0].body, "Test entry");
-    }
-
-    #[test]
     fn test_config_operations() {
         let (_temp_dir, _, config_path) = setup_test_env();
 
@@ -289,21 +269,9 @@ mod tests {
         fs::write(&config_path, toml::to_string(&config).unwrap()).unwrap();
 
         // Test loading
-        let loaded_config = Config::default();
-        assert!(!loaded_config.journal_cfg.body_tags); // Default should be false
-    }
-
-    #[test]
-    fn test_journal_exists() {
-        let (temp_dir, _, _) = setup_test_env();
-        let journal_dir = temp_dir.path().join(JOURNAL_DIR);
-
-        // Before creating directory
-        assert!(!journal_dir.exists());
-
-        // After creating directory
-        fs::create_dir_all(&journal_dir).unwrap();
-        assert!(journal_dir.exists());
+        let loaded_config: Config =
+            toml::from_str(&fs::read_to_string(config_path).unwrap()).unwrap();
+        assert!(loaded_config.journal_cfg.body_tags);
     }
 
     fn setup_temp_journal() -> (TempDir, PathBuf) {
@@ -326,22 +294,32 @@ mod tests {
 
         // Create and save a journal with one entry
         let mut journal = Journal::new(path.clone());
-        journal.add_entry(Entry::new(0, "Test entry".to_string(), vec![]));
+        journal.add_entry(Entry::new(
+            0,
+            "Test entry".to_string(),
+            vec![Tag::new("test".to_string())],
+        ));
         save_journal(&journal).unwrap();
 
         // Load the journal and verify contents
         let loaded_journal = load_from_path(path).unwrap();
         assert_eq!(loaded_journal.entries().len(), 1);
         assert_eq!(loaded_journal.entries()[0].body, "Test entry");
+        assert_eq!(loaded_journal.entries()[0].tags[0].name, "test");
     }
 
     #[test]
     fn test_get_journal_dir() {
         let dir = get_journal_dir().unwrap();
-        if cfg!(debug_assertions) {
-            assert!(dir.ends_with(JOURNAL_DIR));
+        if let Some(path) = std::env::var_os("XLOG_HOME") {
+            assert_eq!(dir, PathBuf::from(path));
+        } else if cfg!(debug_assertions) {
+            assert_eq!(
+                dir,
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(JOURNAL_DIR)
+            );
         } else {
-            assert!(dir.to_str().unwrap().contains(JOURNAL_DIR));
+            assert_eq!(dir, dirs::home_dir().unwrap().join(JOURNAL_DIR));
         }
     }
 }

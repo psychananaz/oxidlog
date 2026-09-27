@@ -67,15 +67,24 @@ Edit an existing journal entry by its ID.
 ### `xlog search "query"`
 Search through journal entries using a query.
 
-### `xlog export --format [json|csv|plain]`
+### `xlog export [json|csv|plain]`
 Export journal entries to various formats.
 
-### `xlog backup --action [create|restore]`
+### `xlog backup [create|restore]`
 Create or restore a backup of your journal.
 
 ## Data and Config Location
 
 The data and config files are located in the `.oxidlog` directory in your home folder. The config file is named `config.toml` and the journal data is stored in `journal.json`.
+
+Set `XLOG_HOME` to override the directory containing `config.toml` and `journal.json`.
+Without this override, debug builds use `.oxidlog` in the project directory and release builds use `.oxidlog` in your home directory.
+
+## Testing
+
+Run `cargo test` to run all tests. Unit tests live in `#[cfg(test)] mod tests` beside the code in `src/`. This project is a binary crate, so the integration tests in `tests/cli_tests.rs` launch `xlog` and check its output and saved files instead of importing internal modules.
+
+Each CLI test uses a temporary `XLOG_HOME`. The tests create journal fixtures directly because `init` uses an interactive terminal UI. They cover its failure without a terminal, but do not automate the successful interactive wizard.
 
 ## Learn more
 Use the 'help' command to explore all available options
