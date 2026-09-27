@@ -291,3 +291,51 @@ fn search_handles_repetition_unicode_and_case_without_ansi_in_pipes() {
     assert!(stdout(&dir, &["search", "Café", "--case-sensitive"]).contains("No entries found"));
     assert!(stdout(&dir, &["search", "z", "--fuzzy"]).contains("No entries found"));
 }
+
+#[test]
+fn edit_preserves_defaults_and_eof_does_not_save() {
+    let dir = journal();
+    add_entry(&dir);
+    let original = entries(&dir);
+    command(&dir)
+        .args(["edit", "0"])
+        .write_stdin("\n\n")
+        .assert()
+        .success();
+    assert_eq!(entries(&dir), original);
+    command(&dir)
+        .args(["edit", "0"])
+        .write_stdin("unsaved\n")
+        .assert()
+        .failure();
+    assert_eq!(entries(&dir), original);
+    command(&dir)
+        .args(["edit", "0"])
+        .write_stdin("\n-\n")
+        .assert()
+        .success();
+    assert!(entries(&dir)[0]["tags"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn add_and_edit_share_inline_tag_rules() {
+    let dir = journal();
+    fs::write(
+        dir.path().join("config.toml"),
+        "[journal_cfg]\nbody_tags = true\n",
+    )
+    .unwrap();
+    stdout(&dir, &["add", "body #work #work"]);
+    assert_eq!(entries(&dir)[0]["body"], "body");
+    command(&dir)
+        .args(["edit", "0"])
+        .write_stdin("new body #home #home\n#work work\n")
+        .assert()
+        .success();
+    let saved = entries(&dir);
+    assert_eq!(saved[0]["body"], "new body");
+    assert_eq!(
+        saved[0]["tags"],
+        serde_json::json!([{"name":"work"}, {"name":"home"}])
+    );
+}

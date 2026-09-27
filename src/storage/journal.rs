@@ -122,6 +122,10 @@ impl Journal {
         self.entries.iter().find(|e| e.id == id)
     }
 
+    pub fn get_entry_mut(&mut self, id: usize) -> Option<&mut Entry> {
+        self.entries.iter_mut().find(|entry| entry.id == id)
+    }
+
     pub fn get_entries(&self) -> &[Entry] {
         &self.entries
     }

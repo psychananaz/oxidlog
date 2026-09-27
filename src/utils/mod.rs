@@ -13,12 +13,17 @@ use crate::storage::{config::JournalConfig, Entry, Journal, Tag};
 /// # Returns
 ///
 /// A `String` containing the user's input.
-pub fn get_input(prompt: &str) -> String {
-    print!("{}", prompt);
-    io::stdout().flush().unwrap();
+pub fn get_input(prompt: &str) -> io::Result<String> {
+    print!("{prompt}");
+    io::stdout().flush()?;
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().to_string()
+    if io::stdin().read_line(&mut input)? == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "Input ended; edit cancelled",
+        ));
+    }
+    Ok(input.trim().to_owned())
 }
 
 pub enum TagMatch {
@@ -46,21 +51,6 @@ pub fn do_tags_match(query_tags: &[Tag], entry_tags: &[Tag], match_type: TagMatc
         TagMatch::Any => query_tags.iter().any(|tag| entry_tags.contains(tag)),
         TagMatch::All => query_tags.iter().all(|tag| entry_tags.contains(tag)),
     }
-}
-
-/// Parses a string of tags separated by whitespace into a vector of `Tag` structs.
-///
-/// # Arguments
-///
-/// * `tags` - A string slice containing the tags separated by whitespace.
-///
-/// # Returns
-///
-/// A vector of `Tag` structs.
-pub fn parse_tags(tags: &str) -> Vec<Tag> {
-    tags.split_whitespace()
-        .map(|t| t.parse::<Tag>().unwrap())
-        .collect()
 }
 
 /// Parses a date string in the format "YYYY-MM-DD" into a `NaiveDate` struct.
@@ -231,16 +221,6 @@ mod tests {
             Tag::new("sample".to_string()),
         ];
         assert!(do_tags_match(&query_tags, &entry_tags, TagMatch::All));
-    }
-
-    #[test]
-    fn test_parse_tags() {
-        let tags_str = "test example sample";
-        let tags = parse_tags(tags_str);
-        assert_eq!(tags.len(), 3);
-        assert_eq!(tags[0].name, "test");
-        assert_eq!(tags[1].name, "example");
-        assert_eq!(tags[2].name, "sample");
     }
 
     #[test]

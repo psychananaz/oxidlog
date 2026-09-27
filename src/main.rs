@@ -2,6 +2,7 @@ use colored::*;
 
 mod cli;
 mod commands;
+mod content;
 mod error;
 mod matching;
 mod storage;

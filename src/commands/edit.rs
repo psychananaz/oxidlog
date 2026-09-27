@@ -1,54 +1,53 @@
 use crate::{
+    content::{parse_content, parse_tags},
     error::{JotError, JotResult},
-    storage::{self, Entry, Journal, Tag},
+    storage::{self, config::Config, Journal},
     utils,
 };
 use colored::Colorize;
 
-#[derive(clap::Args, Clone)]
+#[derive(clap::Args)]
 pub struct EditArgs {
     pub id: usize,
 }
 
-pub fn execute(journal: &mut Journal, args: EditArgs) -> JotResult<()> {
-    let id = args.id;
-    match journal.get_entry(id) {
-        Some(entry) => {
-            println!("Editing entry: {}", entry.body);
-            let new_body = handle_input(&format!("Enter new content [{}]: ", entry.body));
-            let tags_str = entry
-                .tags
-                .iter()
-                .map(|t| t.name.clone())
-                .collect::<Vec<_>>()
-                .join(" ");
-            let new_tags: Vec<Tag> = handle_input(&format!("Enter new tags [{}]: ", tags_str))
-                .split_whitespace()
-                .map(|s| Tag::new(s.to_string()))
-                .collect();
-
-            let new_entry = Entry {
-                id: entry.id,
-                body: new_body,
-                tags: new_tags,
-                date: entry.date,
-                timestamp: entry.timestamp,
-            };
-
-            journal.update_entry(new_entry);
-            storage::save_journal(journal)?;
-
-            println!("{}", "Entry updated!".green());
-
-            Ok(())
-        }
-        None => Err(JotError::EditError(format!(
-            "Entry with ID {} not found",
-            id
-        ))),
+pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> JotResult<()> {
+    let entry = journal
+        .get_entry(args.id)
+        .ok_or_else(|| JotError::EditError(format!("Entry with ID {} not found", args.id)))?;
+    println!("Editing entry: {}", entry.body);
+    let body_input = utils::get_input(&format!("Enter new content [{}]: ", entry.body))?;
+    let tags = entry
+        .tags
+        .iter()
+        .map(|tag| tag.name.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let tags_input = utils::get_input(&format!(
+        "Enter new tags [{tags}] (blank keeps, '-' clears): "
+    ))?;
+    let content = if body_input.is_empty() {
+        None
+    } else {
+        Some(parse_content(body_input, config.journal_cfg.body_tags)?)
+    };
+    let entry = journal
+        .get_entry_mut(args.id)
+        .ok_or_else(|| JotError::EditError(format!("Entry with ID {} not found", args.id)))?;
+    if tags_input == "-" {
+        entry.tags.clear();
+    } else if !tags_input.is_empty() {
+        entry.tags = parse_tags(&tags_input);
     }
-}
-
-fn handle_input(prompt: &str) -> String {
-    utils::get_input(prompt)
+    if let Some(content) = content {
+        entry.body = content.body;
+        for tag in content.tags {
+            if !entry.tags.contains(&tag) {
+                entry.tags.push(tag);
+            }
+        }
+    }
+    storage::save_journal(journal)?;
+    println!("{}", "Entry updated!".green());
+    Ok(())
 }

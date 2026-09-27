@@ -93,7 +93,7 @@ pub fn run() -> JotResult<()> {
         }
         Commands::Edit { args } => {
             let mut journal = storage::load_journal()?;
-            commands::edit::execute(&mut journal, args)
+            commands::edit::execute(&mut journal, args, &storage::load_config()?)
         }
         Commands::Search { args } => {
             let journal = storage::load_journal()?;
