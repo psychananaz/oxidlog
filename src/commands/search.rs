@@ -1,5 +1,5 @@
 use crate::{
-    error::JotResult,
+    error::AppResult,
     matching::TextQuery,
     presentation::{self, DisplayOptions},
     query::{self, DateRange, EntryFilter, SearchQuery, TagMatch},
@@ -24,7 +24,7 @@ pub struct SearchArgs {
     pub case_sensitive: bool,
 }
 
-pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> JotResult<()> {
+pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> AppResult<()> {
     let query = SearchQuery {
         filter: EntryFilter {
             dates: DateRange::new(args.from, args.to)?,

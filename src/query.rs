@@ -1,5 +1,5 @@
 use crate::{
-    error::JotResult,
+    error::AppResult,
     matching::TextQuery,
     storage::{Entry, Tag},
 };
@@ -54,11 +54,9 @@ pub struct DateRange {
 }
 
 impl DateRange {
-    pub fn new(from: Option<chrono::NaiveDate>, to: Option<chrono::NaiveDate>) -> JotResult<Self> {
+    pub fn new(from: Option<chrono::NaiveDate>, to: Option<chrono::NaiveDate>) -> AppResult<Self> {
         if matches!((from, to), (Some(from), Some(to)) if from > to) {
-            return Err(crate::error::JotError::CommandError(
-                "Start date must not be after end date".into(),
-            ));
+            return Err(crate::error::AppError::InvalidDateRange);
         }
         Ok(Self { from, to })
     }

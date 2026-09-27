@@ -3,7 +3,7 @@ pub mod journal;
 
 pub use journal::{Entry, Journal, Tag};
 
-use crate::error::{JotError, JotResult};
+use crate::error::{AppError, AppResult};
 use config::Config;
 use std::fs;
 use std::io::{self, Write};
@@ -34,59 +34,57 @@ impl Backup {
         }
     }
 
-    pub fn create(&self) -> JotResult<()> {
+    pub fn create(&self) -> AppResult<()> {
         // Read first: a missing or unreadable source must not rotate away the
         // most recent usable backup. Write replacements atomically as well.
-        let content = fs::read(&self.source_path)?;
+        let content = fs::read(&self.source_path).map_err(|source| {
+            AppError::file("read journal for backup", &self.source_path, source)
+        })?;
         if self.backup_path.exists() {
-            atomic_write(&self.old_backup_path, &fs::read(&self.backup_path)?)?;
+            let previous = fs::read(&self.backup_path)
+                .map_err(|source| AppError::file("read backup", &self.backup_path, source))?;
+            atomic_write(&self.old_backup_path, &previous)?;
         }
         atomic_write(&self.backup_path, &content)
     }
 
-    pub fn restore(&self) -> JotResult<()> {
+    pub fn restore(&self) -> AppResult<()> {
         // Validate before replacing the current file. Restore must work even
         // when the current journal is corrupt or missing.
-        let content = fs::read(&self.backup_path)?;
-        let entries: Vec<Entry> = serde_json::from_slice(&content)?;
+        let content = fs::read(&self.backup_path)
+            .map_err(|source| AppError::file("read backup", &self.backup_path, source))?;
+        let entries: Vec<Entry> =
+            serde_json::from_slice(&content).map_err(|source| AppError::JournalData {
+                path: self.backup_path.clone(),
+                source,
+            })?;
         Journal::from_entries(self.source_path.clone(), entries)?;
         atomic_write(&self.source_path, &content)
     }
 }
 
-/// Load the journal from the default location
-pub fn load_journal() -> JotResult<Journal> {
-    let journal_path = get_journal_path()
-        .map_err(|e| JotError::Other(format!("Failed to get journal path: {}", e).into()))?;
-
-    if !journal_path.exists() {
-        return Err(JotError::Other(
-            "Journal not found. Run 'xlog init' to create one.".into(),
-        ));
-    }
-
-    load_from_path(journal_path)
+/// Load the journal from the configured location.
+pub fn load_journal() -> AppResult<Journal> {
+    load_from_path(get_journal_path()?)
 }
 
-/// Load a journal from a specific path
-pub fn load_from_path(path: PathBuf) -> JotResult<Journal> {
-    match fs::read_to_string(&path) {
-        Ok(content) => {
-            // Validate JSON structure before parsing
-            if !content.trim().starts_with('[') || !content.trim().ends_with(']') {
-                return Err(JotError::Other("Invalid journal file format".into()));
-            }
-
-            let entries: Vec<Entry> =
-                serde_json::from_str(&content).map_err(JotError::SerdeError)?;
-            Journal::from_entries(path, entries)
+/// Missing journals are errors; creating an empty journal is explicit.
+pub fn load_from_path(path: PathBuf) -> AppResult<Journal> {
+    let content = fs::read(&path).map_err(|source| {
+        if source.kind() == io::ErrorKind::NotFound {
+            AppError::JournalNotFound(path.clone())
+        } else {
+            AppError::file("read journal", &path, source)
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Journal::new(path)),
-        Err(e) => Err(JotError::IoError(e)),
-    }
+    })?;
+    let entries = serde_json::from_slice(&content).map_err(|source| AppError::JournalData {
+        path: path.clone(),
+        source,
+    })?;
+    Journal::from_entries(path, entries)
 }
 
-pub fn save_journal(journal: &Journal) -> JotResult<()> {
+pub fn save_journal(journal: &Journal) -> AppResult<()> {
     let content = serde_json::to_vec_pretty(journal.entries())?;
     if journal.path().exists() {
         Backup::from_journal(journal).create()?;
@@ -96,7 +94,7 @@ pub fn save_journal(journal: &Journal) -> JotResult<()> {
 
 // A unique, exclusively created sibling file keeps failed writes from
 // truncating the destination and prevents temporary-file name collisions.
-fn atomic_write(path: &Path, content: &[u8]) -> JotResult<()> {
+fn atomic_write(path: &Path, content: &[u8]) -> AppResult<()> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
     let parent = path
         .parent()
@@ -112,7 +110,7 @@ fn atomic_write(path: &Path, content: &[u8]) -> JotResult<()> {
         {
             Ok(file) => break (temp_path, file),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(AppError::file("create temporary file for", path, error)),
         }
     };
     let result = (|| {
@@ -124,11 +122,11 @@ fn atomic_write(path: &Path, content: &[u8]) -> JotResult<()> {
     if result.is_err() {
         let _ = fs::remove_file(&temp_path);
     }
-    result.map_err(Into::into)
+    result.map_err(|source| AppError::file("write", path, source))
 }
 
 /// Get the directory where the journal is stored
-pub fn get_journal_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn get_journal_dir() -> AppResult<PathBuf> {
     if let Some(path) = std::env::var_os("XLOG_HOME") {
         return Ok(PathBuf::from(path));
     }
@@ -137,7 +135,7 @@ pub fn get_journal_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     if cfg!(debug_assertions) {
         path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     } else {
-        path = dirs::home_dir().ok_or("Could not find home directory")?;
+        path = dirs::home_dir().ok_or(AppError::HomeUnavailable)?;
     }
 
     path.push(JOURNAL_DIR);
@@ -145,18 +143,18 @@ pub fn get_journal_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 /// Get the path to the journal file
-pub fn get_journal_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn get_journal_path() -> AppResult<PathBuf> {
     let mut path = get_journal_dir()?;
     path.push(JOURNAL_FILE);
     Ok(path)
 }
 
-pub fn init_journal(config: &Config) -> JotResult<()> {
+pub fn init_journal(config: &Config) -> AppResult<()> {
     init_at(&get_journal_dir()?, config)
 }
 
-fn init_at(dir: &Path, config: &Config) -> JotResult<()> {
-    fs::create_dir_all(dir)?;
+fn init_at(dir: &Path, config: &Config) -> AppResult<()> {
+    fs::create_dir_all(dir).map_err(|source| AppError::file("create directory", dir, source))?;
     let journal = Journal::new(dir.join(JOURNAL_FILE));
     // Preserve existing journal bytes, including a corrupt journal, before
     // resetting it. Failure to save configuration must not erase entries.
@@ -167,41 +165,51 @@ fn init_at(dir: &Path, config: &Config) -> JotResult<()> {
     atomic_write(journal.path(), b"[]")
 }
 
-pub fn journal_exists() -> bool {
-    get_journal_path().is_ok_and(|path| path.is_file())
+pub fn journal_exists() -> AppResult<bool> {
+    let path = get_journal_path()?;
+    match fs::metadata(&path) {
+        Ok(metadata) => Ok(metadata.is_file()),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(source) => Err(AppError::file("inspect journal", &path, source)),
+    }
 }
 
 // ! Config Related
 
 /// Get the path to the config file
-pub fn get_config_path() -> JotResult<PathBuf> {
-    let mut path = get_journal_dir()
-        .map_err(|e| JotError::Other(format!("Failed to get journal directory: {}", e).into()))?;
+pub fn get_config_path() -> AppResult<PathBuf> {
+    let mut path = get_journal_dir()?;
     path.push(CONFIG_FILE);
     Ok(path)
 }
 
 /// Load configuration without creating directories or changing files.
-pub fn load_config() -> JotResult<Config> {
+pub fn load_config() -> AppResult<Config> {
     load_config_from(&get_config_path()?)
 }
 
-fn load_config_from(path: &Path) -> JotResult<Config> {
+fn load_config_from(path: &Path) -> AppResult<Config> {
     match fs::read_to_string(path) {
-        Ok(content) => Ok(toml::from_str(&content)?),
+        Ok(content) => toml::from_str(&content).map_err(|source| AppError::ConfigParse {
+            path: path.to_owned(),
+            source,
+        }),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Config::default()),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(AppError::file("read configuration", path, error)),
     }
 }
 
-fn save_config_to(path: &Path, config: &Config) -> JotResult<()> {
+fn save_config_to(path: &Path, config: &Config) -> AppResult<()> {
     let content = toml::to_string_pretty(config)?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent)
+            .map_err(|source| AppError::file("create directory", parent, source))?;
     }
     if path.exists() {
         let backup_path = path.with_extension(format!("toml{BACKUP_EXTENSION}"));
-        atomic_write(&backup_path, &fs::read(path)?)?;
+        let previous = fs::read(path)
+            .map_err(|source| AppError::file("read configuration for backup", path, source))?;
+        atomic_write(&backup_path, &previous)?;
     }
     atomic_write(path, content.as_bytes())
 }
@@ -292,6 +300,11 @@ mod tests {
     #[test]
     fn test_load_empty_journal() {
         let (_temp_dir, path) = setup_temp_journal();
+        assert!(matches!(
+            load_from_path(path.clone()),
+            Err(AppError::JournalNotFound(_))
+        ));
+        fs::write(&path, "[]").unwrap();
         let journal = load_from_path(path.clone()).unwrap();
         assert!(journal.entries().is_empty());
         assert_eq!(*journal.path(), path);

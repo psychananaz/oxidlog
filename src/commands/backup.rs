@@ -1,8 +1,9 @@
 use crate::{
-    error::JotResult,
+    error::AppResult,
     storage::{self, Journal},
 };
 use colored::Colorize;
+use std::io::Write as _;
 
 #[derive(Debug, Clone)]
 enum BackupAction {
@@ -28,33 +29,35 @@ pub struct BackupArgs {
     action: BackupAction,
 }
 
-pub fn execute(journal: &Journal, args: BackupArgs) -> JotResult<()> {
+pub fn execute(journal: &Journal, args: BackupArgs) -> AppResult<()> {
     match args.action {
         BackupAction::Create => create_backup(journal),
         BackupAction::Restore => restore_backup(journal),
     }
 }
 
-fn create_backup(journal: &Journal) -> JotResult<()> {
+fn create_backup(journal: &Journal) -> AppResult<()> {
     let backup = storage::Backup::from_journal(journal);
     backup.create()?;
 
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "Backup created at: {}",
         backup.backup_path.to_string_lossy().green()
-    );
+    )?;
 
     Ok(())
 }
 
-fn restore_backup(journal: &Journal) -> JotResult<()> {
+fn restore_backup(journal: &Journal) -> AppResult<()> {
     let backup = storage::Backup::from_journal(journal);
     backup.restore()?;
 
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "Backup restored from: {}",
         backup.backup_path.to_string_lossy().green()
-    );
+    )?;
 
     Ok(())
 }

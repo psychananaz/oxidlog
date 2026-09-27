@@ -100,7 +100,7 @@ mod tests {
         );
         assert_eq!(
             TextQuery::new("CAT".into(), true, false).find("CAT cat"),
-            Some(vec![0..3])
+            Some(std::iter::once(0..3).collect())
         );
     }
 
@@ -109,7 +109,7 @@ mod tests {
         let body = "İ café CAFÉ";
         assert_eq!(
             TextQuery::new("i".into(), false, false).find(body),
-            Some(vec![0..2])
+            Some(std::iter::once(0..2).collect())
         );
         assert_eq!(
             TextQuery::new("café".into(), false, false).find(body),
@@ -117,11 +117,11 @@ mod tests {
         );
         assert_eq!(
             TextQuery::new("i\u{307}".into(), false, true).find(body),
-            Some(vec![0..2])
+            Some(std::iter::once(0..2).collect())
         );
         assert_eq!(
             TextQuery::new("ος".into(), false, false).find("ΟΣ"),
-            Some(vec![0..4])
+            Some(std::iter::once(0..4).collect())
         );
     }
 }

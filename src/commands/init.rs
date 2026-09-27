@@ -1,7 +1,8 @@
-use crate::error::{JotError, JotResult};
+use crate::error::{AppError, AppResult};
 use crate::storage;
 use crate::storage::config::{Config, JournalConfig};
 use dialoguer::{Confirm, Input, Select};
+use std::io::Write as _;
 use std::path::PathBuf;
 
 #[derive(clap::Args)]
@@ -11,16 +12,19 @@ pub struct InitArgs {
     export_dir: Option<PathBuf>,
 }
 
-pub fn execute(args: InitArgs) -> JotResult<()> {
-    if storage::journal_exists() {
+pub fn execute(args: InitArgs) -> AppResult<()> {
+    if storage::journal_exists()? {
         let proceed = Confirm::new()
             .with_prompt("A journal already exists. Do you want to overwrite it?")
             .default(false)
             .interact()
-            .map_err(|e| JotError::_InitError(format!("Failed to get user confirmation: {}", e)))?;
+            .map_err(|source| AppError::Prompt {
+                prompt: "user confirmation",
+                source,
+            })?;
 
         if !proceed {
-            println!("Operation cancelled.");
+            writeln!(std::io::stdout().lock(), "Operation cancelled.")?;
             return Ok(());
         }
     }
@@ -34,7 +38,10 @@ pub fn execute(args: InitArgs) -> JotResult<()> {
             .with_prompt("Export directory path")
             .default(default_dir)
             .interact()
-            .map_err(|e| JotError::_InitError(format!("Failed to get export directory: {}", e)))?
+            .map_err(|source| AppError::Prompt {
+                prompt: "export directory",
+                source,
+            })?
     };
 
     // Configure timestamp display
@@ -42,7 +49,10 @@ pub fn execute(args: InitArgs) -> JotResult<()> {
         .with_prompt("Show timestamps in entries?")
         .default(true)
         .interact()
-        .map_err(|e| JotError::_InitError(format!("Failed to get timestamp preference: {}", e)))?;
+        .map_err(|source| AppError::Prompt {
+            prompt: "timestamp preference",
+            source,
+        })?;
 
     // Configure tag style
     let tag_options = vec!["Body tags (#tag in content)", "Separate tag field"];
@@ -51,7 +61,10 @@ pub fn execute(args: InitArgs) -> JotResult<()> {
         .items(&tag_options)
         .default(0)
         .interact()
-        .map_err(|e| JotError::_InitError(format!("Failed to get tag preference: {}", e)))?;
+        .map_err(|source| AppError::Prompt {
+            prompt: "tag preference",
+            source,
+        })?;
 
     let new_config = Config {
         journal_cfg: JournalConfig {
@@ -65,9 +78,19 @@ pub fn execute(args: InitArgs) -> JotResult<()> {
 
     // Show success message with journal location
     let journal_path = storage::get_journal_path()?;
-    println!("\n✨ Journal initialized successfully!");
-    println!("📝 Location: {}", journal_path.display());
-    println!("🚀 Run 'xlog add' to create your first entry");
+    writeln!(
+        std::io::stdout().lock(),
+        "\n✨ Journal initialized successfully!"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "📝 Location: {}",
+        journal_path.display()
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "🚀 Run 'xlog add' to create your first entry"
+    )?;
 
     Ok(())
 }

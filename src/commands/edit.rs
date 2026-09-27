@@ -1,21 +1,22 @@
 use crate::{
     cli::input,
     content::{parse_content, parse_tags},
-    error::{JotError, JotResult},
+    error::{AppError, AppResult},
     storage::{self, config::Config, Journal},
 };
 use colored::Colorize;
+use std::io::Write as _;
 
 #[derive(clap::Args)]
 pub struct EditArgs {
     pub id: usize,
 }
 
-pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> JotResult<()> {
+pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> AppResult<()> {
     let entry = journal
         .get_entry(args.id)
-        .ok_or_else(|| JotError::EditError(format!("Entry with ID {} not found", args.id)))?;
-    println!("Editing entry: {}", entry.body);
+        .ok_or(AppError::EntryNotFound(args.id))?;
+    writeln!(std::io::stdout().lock(), "Editing entry: {}", entry.body)?;
     let body_input = input::get_input(&format!("Enter new content [{}]: ", entry.body))?;
     let tags = entry
         .tags
@@ -40,6 +41,6 @@ pub fn execute(journal: &mut Journal, args: EditArgs, config: &Config) -> JotRes
     };
     journal.edit_entry(args.id, content, tags)?;
     storage::save_journal(journal)?;
-    println!("{}", "Entry updated!".green());
+    writeln!(std::io::stdout().lock(), "{}", "Entry updated!".green())?;
     Ok(())
 }

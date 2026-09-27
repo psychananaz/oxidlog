@@ -1,5 +1,5 @@
 use crate::{
-    error::{JotError, JotResult},
+    error::{AppError, AppResult},
     storage::{config::Config, Entry, Journal},
 };
 use chrono::Local;
@@ -26,14 +26,15 @@ pub enum ExportFormat {
     Plain,
 }
 
-pub fn execute(journal: &Journal, args: ExportArgs, config: &Config) -> JotResult<()> {
+pub fn execute(journal: &Journal, args: ExportArgs, config: &Config) -> AppResult<()> {
     let entries = journal.entries();
     let export_dir = journal
         .path()
         .parent()
         .unwrap_or(journal.path())
         .join(&config.journal_cfg.export_dir);
-    fs::create_dir_all(&export_dir)?;
+    fs::create_dir_all(&export_dir)
+        .map_err(|source| AppError::file("create export directory", &export_dir, source))?;
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let filename = generate_filename(args.format, timestamp);
@@ -50,7 +51,11 @@ pub fn execute(journal: &Journal, args: ExportArgs, config: &Config) -> JotResul
         open_exported_file(&export_path)?;
     }
 
-    println!("Journal exported successfully to {}", export_path.display());
+    writeln!(
+        std::io::stdout().lock(),
+        "Journal exported successfully to {}",
+        export_path.display()
+    )?;
     Ok(())
 }
 
@@ -62,8 +67,8 @@ fn generate_filename(format: ExportFormat, timestamp: impl std::fmt::Display) ->
     }
 }
 
-fn export_to_json(entries: &[Entry]) -> JotResult<String> {
-    serde_json::to_string_pretty(&entries).map_err(JotError::SerdeError)
+fn export_to_json(entries: &[Entry]) -> AppResult<String> {
+    serde_json::to_string_pretty(&entries).map_err(AppError::Json)
 }
 
 fn csv_field(value: &str) -> String {
@@ -93,7 +98,7 @@ fn export_to_csv(entries: &[Entry]) -> String {
     csv
 }
 
-fn write_export(dir: &Path, filename: &str, content: &str) -> JotResult<PathBuf> {
+fn write_export(dir: &Path, filename: &str, content: &str) -> AppResult<PathBuf> {
     let filename = Path::new(filename);
     let stem = filename.file_stem().unwrap().to_string_lossy();
     let extension = filename.extension().unwrap().to_string_lossy();
@@ -116,15 +121,15 @@ fn write_export(dir: &Path, filename: &str, content: &str) -> JotResult<PathBuf>
                 drop(file);
                 if let Err(error) = result {
                     let _ = fs::remove_file(&path);
-                    return Err(error.into());
+                    return Err(AppError::file("write export", &path, error));
                 }
                 return Ok(path);
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(AppError::file("create export", &path, error)),
         }
     }
-    Err(JotError::ExportError("No available export filename".into()))
+    Err(AppError::ExportNamesExhausted)
 }
 
 fn export_to_plain(entries: &[Entry]) -> String {
@@ -146,30 +151,28 @@ fn export_to_plain(entries: &[Entry]) -> String {
     text
 }
 
-fn open_exported_file(export_path: &Path) -> JotResult<()> {
+fn open_exported_file(export_path: &Path) -> AppResult<()> {
     let platform = std::env::consts::OS;
     let command = match platform {
         "linux" => "xdg-open",
         "macos" => "open",
         "windows" => "explorer.exe",
         _ => {
-            return Err(JotError::ExportError(format!(
-                "Cannot open exported file: unsupported platform '{}'",
-                platform
-            )));
+            return Err(AppError::UnsupportedPlatform(platform));
         }
     };
 
     let status = std::process::Command::new(command)
         .arg(export_path)
-        .status()?;
+        .status()
+        .map_err(|source| AppError::file("open export", export_path, source))?;
 
     if !status.success() {
-        return Err(JotError::ExportError(format!(
-            "Failed to open exported file '{}' with system command '{}'",
-            export_path.display(),
-            command
-        )));
+        return Err(AppError::OpenExport {
+            path: export_path.to_owned(),
+            command,
+            status,
+        });
     }
 
     Ok(())

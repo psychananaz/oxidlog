@@ -1,6 +1,6 @@
 use crate::{
     content::EntryContent,
-    error::{JotError, JotResult},
+    error::{AppError, AppResult},
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -78,14 +78,11 @@ impl Journal {
         }
     }
 
-    pub fn from_entries(path: PathBuf, entries: Vec<Entry>) -> JotResult<Self> {
+    pub fn from_entries(path: PathBuf, entries: Vec<Entry>) -> AppResult<Self> {
         let mut ids = HashSet::with_capacity(entries.len());
         for entry in &entries {
             if !ids.insert(entry.id) {
-                return Err(JotError::CommandError(format!(
-                    "Duplicate entry ID {} in journal",
-                    entry.id
-                )));
+                return Err(AppError::DuplicateId(entry.id));
             }
         }
         Ok(Self { path, entries })
@@ -99,9 +96,9 @@ impl Journal {
         &self.entries
     }
 
-    pub fn add_entry(&mut self, body: String, tags: Vec<Tag>) -> JotResult<usize> {
+    pub fn add_entry(&mut self, body: String, tags: Vec<Tag>) -> AppResult<usize> {
         if body.trim().is_empty() {
-            return Err(JotError::AddError("Entry body cannot be empty".into()));
+            return Err(AppError::EmptyBody);
         }
         let id = self.next_id()?;
         let entry = Entry::new(id, body, tags);
@@ -124,15 +121,15 @@ impl Journal {
         id: usize,
         content: Option<EntryContent>,
         tags: Option<Vec<Tag>>,
-    ) -> JotResult<()> {
+    ) -> AppResult<()> {
         let entry = self
             .entries
             .iter_mut()
             .find(|entry| entry.id == id)
-            .ok_or_else(|| JotError::EditError(format!("Entry with ID {id} not found")))?;
+            .ok_or(AppError::EntryNotFound(id))?;
         if let Some(content) = &content {
             if content.body.trim().is_empty() {
-                return Err(JotError::EditError("Entry body cannot be empty".into()));
+                return Err(AppError::EmptyBody);
             }
         }
         if let Some(tags) = tags {
@@ -153,11 +150,9 @@ impl Journal {
         self.entries.iter().find(|e| e.id == id)
     }
 
-    fn next_id(&self) -> JotResult<usize> {
+    fn next_id(&self) -> AppResult<usize> {
         match self.entries.iter().map(|entry| entry.id).max() {
-            Some(id) => id
-                .checked_add(1)
-                .ok_or_else(|| JotError::CommandError("Entry IDs exhausted".into())),
+            Some(id) => id.checked_add(1).ok_or(AppError::IdExhausted),
             None => Ok(0),
         }
     }

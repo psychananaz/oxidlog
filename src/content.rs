@@ -1,5 +1,5 @@
 use crate::{
-    error::{JotError, JotResult},
+    error::{AppError, AppResult},
     storage::Tag,
 };
 
@@ -19,12 +19,12 @@ pub fn parse_tags(input: &str) -> Vec<Tag> {
     tags
 }
 
-pub fn parse_content(mut content: String, body_tags: bool) -> JotResult<EntryContent> {
+pub fn parse_content(mut content: String, body_tags: bool) -> AppResult<EntryContent> {
     content.truncate(content.trim_end().len());
     let leading = content.len() - content.trim_start().len();
     content.drain(..leading);
     if content.is_empty() {
-        return Err(JotError::AddError("Entry cannot be empty".into()));
+        return Err(AppError::EmptyBody);
     }
     let mut tags = Vec::new();
     for word in content
@@ -47,7 +47,7 @@ pub fn parse_content(mut content: String, body_tags: bool) -> JotResult<EntryCon
         content
     };
     if body.is_empty() {
-        return Err(JotError::AddError("Entry body cannot be empty".into()));
+        return Err(AppError::EmptyBody);
     }
     Ok(EntryContent { body, tags })
 }

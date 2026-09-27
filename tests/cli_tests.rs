@@ -354,3 +354,20 @@ fn recent_view_applies_filters_and_missing_id_is_an_error() {
         .assert()
         .failure();
 }
+
+#[test]
+fn errors_include_command_and_preserve_underlying_failure_details() {
+    let dir = journal();
+    let assertion = command(&dir).args(["edit", "123"]).assert().failure();
+    assert!(String::from_utf8_lossy(&assertion.get_output().stderr)
+        .contains("edit: Entry with ID 123 not found"));
+    fs::write(dir.path().join("journal.json"), "invalid json").unwrap();
+    let assertion = command(&dir)
+        .args(["search", "anything"])
+        .assert()
+        .failure();
+    let error = String::from_utf8_lossy(&assertion.get_output().stderr);
+    assert!(error.contains("search: Invalid journal"));
+    assert!(error.contains("journal.json"));
+    assert!(!error.contains("panicked"));
+}

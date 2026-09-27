@@ -1,7 +1,7 @@
 pub mod input;
 
 use crate::commands::{backup, init};
-use crate::error::JotResult;
+use crate::error::AppResult;
 use crate::{commands, storage};
 use clap::{Parser, Subcommand};
 
@@ -75,11 +75,24 @@ enum Commands {
 
 /// Parse CLI arguments before loading any files, so help and init work even
 /// when the saved configuration is invalid.
-pub fn run() -> JotResult<()> {
+pub fn run() -> AppResult<()> {
     let cli = Cli::parse();
 
-    // Only load journal for commands that need it
-    match cli.command {
+    let name = match &cli.command {
+        Commands::Init { .. } => "init",
+        Commands::Add { .. } => "add",
+        Commands::Remove { .. } => "remove",
+        Commands::View { .. } => "view",
+        Commands::Edit { .. } => "edit",
+        Commands::Search { .. } => "search",
+        Commands::Export { .. } => "export",
+        Commands::Backup { .. } => "backup",
+    };
+    dispatch(cli.command).map_err(|error| error.in_command(name))
+}
+
+fn dispatch(command: Commands) -> AppResult<()> {
+    match command {
         Commands::Init { args } => commands::init::execute(args),
         Commands::Add { args } => {
             let mut journal = storage::load_journal()?;

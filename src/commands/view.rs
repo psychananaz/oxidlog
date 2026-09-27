@@ -1,5 +1,5 @@
 use crate::{
-    error::{JotError, JotResult},
+    error::{AppError, AppResult},
     presentation::{self, DisplayOptions},
     query::{self, DateRange, EntryFilter, TagMatch},
     storage::{config::Config, Journal, Tag},
@@ -27,7 +27,7 @@ pub struct ViewArgs {
     pub all: bool,
 }
 
-pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> JotResult<()> {
+pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> AppResult<()> {
     let filter = EntryFilter {
         dates: DateRange::new(args.from, args.to)?,
         tags: args.tags.into_iter().map(Tag::new).collect(),
@@ -39,9 +39,7 @@ pub fn execute(journal: &Journal, args: ViewArgs, config: &Config) -> JotResult<
     };
     let mut output = std::io::stdout().lock();
     if let Some(id) = args.id {
-        let entry = journal
-            .get_entry(id)
-            .ok_or_else(|| JotError::CommandError(format!("Entry with ID {id} not found")))?;
+        let entry = journal.get_entry(id).ok_or(AppError::EntryNotFound(id))?;
         presentation::write_detail(&mut output, entry)?;
     } else {
         let mut entries = query::select(journal.entries(), &filter);

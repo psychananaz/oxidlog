@@ -1,7 +1,8 @@
-use crate::error::{JotError, JotResult};
+use crate::error::{AppError, AppResult};
 use crate::query::{self, DateRange};
 use crate::storage::{self, Journal};
 use chrono::NaiveDate;
+use std::io::Write as _;
 use std::ops::RangeInclusive;
 
 #[derive(clap::Args, Debug)]
@@ -28,13 +29,11 @@ fn parse_id_range(value: &str) -> Result<RangeInclusive<usize>, String> {
     Ok(start..=end)
 }
 
-fn select_ids(journal: &Journal, args: &RemoveArgs) -> JotResult<Vec<usize>> {
+fn select_ids(journal: &Journal, args: &RemoveArgs) -> AppResult<Vec<usize>> {
     let dates = DateRange::new(args.from, args.to)?;
     if let Some(id) = args.id {
         if journal.get_entry(id).is_none() {
-            return Err(JotError::RemoveError(format!(
-                "Entry with ID {id} not found"
-            )));
+            return Err(AppError::EntryNotFound(id));
         }
     }
     let has_dates = args.from.is_some() || args.to.is_some();
@@ -53,19 +52,19 @@ fn select_ids(journal: &Journal, args: &RemoveArgs) -> JotResult<Vec<usize>> {
         .collect();
     ids.sort_unstable();
     if ids.is_empty() {
-        return Err(JotError::RemoveError("No entries to remove".into()));
+        return Err(AppError::NoEntriesSelected);
     }
     Ok(ids)
 }
 
-pub fn execute(journal: &mut Journal, args: RemoveArgs) -> JotResult<()> {
+pub fn execute(journal: &mut Journal, args: RemoveArgs) -> AppResult<()> {
     let ids = select_ids(journal, &args)?;
     for &id in &ids {
         journal.remove_entry(id);
     }
     storage::save_journal(journal)?;
     for id in ids {
-        println!("Entry {id} removed");
+        writeln!(std::io::stdout().lock(), "Entry {id} removed")?;
     }
     Ok(())
 }
