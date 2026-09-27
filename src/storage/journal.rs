@@ -163,6 +163,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn exhausted_ids_fail_without_inserting_or_wrapping() {
+        let mut journal = Journal::from_entries(
+            PathBuf::from("unused.json"),
+            vec![Entry::new(usize::MAX, "existing".into(), vec![])],
+        )
+        .unwrap();
+        assert!(matches!(
+            journal.add_entry("new".into(), vec![]),
+            Err(AppError::IdExhausted)
+        ));
+        assert_eq!(journal.entries().len(), 1);
+        assert_eq!(journal.entries()[0].id, usize::MAX);
+    }
+
+    #[test]
+    fn edits_preserve_identity_and_validate_before_changing_tags() {
+        let mut journal = Journal::new(PathBuf::from("unused.json"));
+        let id = journal
+            .add_entry("original".into(), vec![Tag::new("old".into())])
+            .unwrap();
+        let timestamp = journal.get_entry(id).unwrap().timestamp;
+        assert!(journal
+            .edit_entry(
+                id,
+                Some(EntryContent {
+                    body: "  ".into(),
+                    tags: vec![]
+                }),
+                Some(vec![])
+            )
+            .is_err());
+        assert_eq!(journal.get_entry(id).unwrap().body, "original");
+        assert_eq!(journal.get_entry(id).unwrap().tags[0].name, "old");
+        journal
+            .edit_entry(
+                id,
+                Some(EntryContent {
+                    body: "updated".into(),
+                    tags: vec![],
+                }),
+                None,
+            )
+            .unwrap();
+        assert_eq!(journal.get_entry(id).unwrap().timestamp, timestamp);
+        assert_eq!(journal.get_entry(id).unwrap().date, timestamp.date_naive());
+    }
+
+    #[test]
     fn test_entry_creation() {
         let entry = Entry::new(
             1,

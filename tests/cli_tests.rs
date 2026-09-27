@@ -371,3 +371,20 @@ fn errors_include_command_and_preserve_underlying_failure_details() {
     assert!(error.contains("journal.json"));
     assert!(!error.contains("panicked"));
 }
+
+#[test]
+fn colored_search_highlights_only_original_body_matches() {
+    let dir = journal();
+    stdout(&dir, &["add", "İ İ #i"]);
+    let assertion = command(&dir)
+        .env_remove("NO_COLOR")
+        .env("CLICOLOR_FORCE", "1")
+        .args(["search", "i"])
+        .assert()
+        .success();
+    let output = String::from_utf8_lossy(&assertion.get_output().stdout);
+    assert_eq!(output.matches("\u{1b}[42mİ\u{1b}[0m").count(), 2);
+    // Two dotted capitals and the inline tag match; the separate tag header
+    // must not receive search highlighting.
+    assert_eq!(output.matches("\u{1b}[42m").count(), 3);
+}
