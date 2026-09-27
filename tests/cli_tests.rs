@@ -277,3 +277,17 @@ fn backup_restores_a_corrupted_journal_and_rejects_corrupted_backup() {
     command(&dir).args(["backup", "restore"]).assert().failure();
     assert_eq!(entries(&dir), original);
 }
+
+#[test]
+fn search_handles_repetition_unicode_and_case_without_ansi_in_pipes() {
+    let dir = journal();
+    stdout(&dir, &["add", "İ café CAFÉ cat cat"]);
+    for query in ["café", "cat", "i"] {
+        let output = stdout(&dir, &["search", query]);
+        assert!(output.contains("İ café CAFÉ cat cat"));
+        assert!(!output.contains('\u{1b}'));
+    }
+    assert!(stdout(&dir, &["search", "CAFÉ", "--case-sensitive"]).contains("1 entries found"));
+    assert!(stdout(&dir, &["search", "Café", "--case-sensitive"]).contains("No entries found"));
+    assert!(stdout(&dir, &["search", "z", "--fuzzy"]).contains("No entries found"));
+}

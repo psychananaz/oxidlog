@@ -111,6 +111,18 @@ impl DateRange {
 ///
 /// A `String` containing the formatted entry.
 pub fn format_entry(entry: &Entry, cfg: JournalConfig) -> String {
+    let mut body = String::new();
+    for part in entry.body.split_inclusive(char::is_whitespace) {
+        if part.starts_with('#') {
+            body.push_str(&part.bright_green().to_string());
+        } else {
+            body.push_str(part);
+        }
+    }
+    format_entry_with_body(entry, cfg, &body)
+}
+
+pub fn format_entry_with_body(entry: &Entry, cfg: JournalConfig, body: &str) -> String {
     let mut formatted = String::new();
     formatted.push_str(
         &format!(
@@ -146,55 +158,10 @@ pub fn format_entry(entry: &Entry, cfg: JournalConfig) -> String {
         ));
     }
 
-    let body_colored = entry
-        .body
-        .split_whitespace()
-        .map(|word| {
-            if word.starts_with('#') {
-                word.bright_green().to_string()
-            } else {
-                word.to_string()
-            }
-        })
-        .collect::<Vec<String>>();
-
-    formatted.push_str(&format!("\n{}\n", body_colored.join(" ")));
+    formatted.push_str(&format!("\n{body}\n"));
     formatted.push_str(&"-".repeat(40));
 
     formatted
-}
-
-/// Performs a fuzzy match of the needle string within the haystack string.
-///
-/// # Arguments
-///
-/// * `haystack` - A string slice representing the text to search within.
-/// * `needle` - A string slice representing the text to search for.
-///
-/// # Returns
-///
-/// A boolean indicating whether the needle was found in the haystack.
-pub fn fuzzy_match(haystack: &str, needle: &str) -> bool {
-    let needle_chars = needle.chars();
-    let mut haystack_chars = haystack.chars();
-
-    for needle_char in needle_chars {
-        if let Some(haystack_char) = haystack_chars.next() {
-            if needle_char == haystack_char {
-                continue;
-            } else {
-                for next_haystack_char in haystack_chars.by_ref() {
-                    if needle_char == next_haystack_char {
-                        break;
-                    }
-                }
-            }
-        } else {
-            return false;
-        }
-    }
-
-    true
 }
 
 /// Views a journal entry by its ID.
@@ -298,11 +265,5 @@ mod tests {
         let formatted = format_entry(&entry, config);
         assert!(formatted.contains("Test entry"));
         assert!(formatted.lines().next().unwrap().contains("unique_tag"));
-    }
-
-    #[test]
-    fn test_fuzzy_match() {
-        assert!(fuzzy_match("fuzzy matching", "fuz mat"));
-        assert!(!fuzzy_match("fuzzy matching", "fuzzy not matching"));
     }
 }

@@ -22,80 +22,51 @@ pub struct SearchArgs {
     pub case_sensitive: bool,
 }
 
-fn check_content_match(content: &str, term: &str, fuzzy: bool) -> bool {
-    if fuzzy {
-        utils::fuzzy_match(content, term)
-    } else {
-        content.contains(term)
+fn highlight(body: &str, ranges: &[std::ops::Range<usize>]) -> String {
+    use colored::Colorize;
+    let mut result = String::new();
+    let mut cursor = 0;
+    for range in ranges {
+        result.push_str(&body[cursor..range.start]);
+        result.push_str(&body[range.clone()].on_green().to_string());
+        cursor = range.end;
     }
-}
-
-fn print_results(found: Vec<String>, term: &str) {
-    println!("{} entries found", found.len());
-    found.iter().for_each(|e| {
-        if term.is_empty() {
-            println!("{}", e);
-        } else {
-            let highlighted =
-                e.to_lowercase()
-                    .match_indices(&term)
-                    .fold(e.to_string(), |acc, (i, _)| {
-                        let orig_match = &acc[i..i + term.len()];
-                        acc.replacen(orig_match, &format!("\x1b[42m{}\x1b[0m", orig_match), 1)
-                    });
-            println!("{}", highlighted);
-        }
-    });
+    result.push_str(&body[cursor..]);
+    result
 }
 
 pub fn execute(journal: &Journal, args: SearchArgs, config: &Config) -> JotResult<()> {
     let dates = utils::DateRange::new(args.from, args.to)?;
-    let term = if args.case_sensitive {
-        args.query
-    } else {
-        args.query.to_lowercase()
-    };
-
-    let entries = journal.get_entries();
-
-    if entries.is_empty() {
+    let query = crate::matching::TextQuery::new(args.query, args.case_sensitive, args.fuzzy);
+    let tags: Vec<_> = args.tags.into_iter().map(Tag::new).collect();
+    let found: Vec<String> = journal
+        .get_entries()
+        .iter()
+        .filter_map(|entry| {
+            let mode = if args.all {
+                TagMatch::All
+            } else {
+                TagMatch::Any
+            };
+            if !dates.contains(entry.date) || !utils::do_tags_match(&tags, &entry.tags, mode) {
+                return None;
+            }
+            let ranges = query.find(&entry.body)?;
+            let body = highlight(&entry.body, &ranges);
+            Some(utils::format_entry_with_body(
+                entry,
+                config.journal_cfg.clone(),
+                &body,
+            ))
+        })
+        .collect();
+    if found.is_empty() {
         println!("No entries found.");
     } else {
-        let found: Vec<String> = entries
-            .iter()
-            .filter(|e| {
-                let content = if args.case_sensitive {
-                    e.body.clone()
-                } else {
-                    e.body.to_lowercase()
-                };
-
-                let content_matches = check_content_match(&content, &term, args.fuzzy);
-                let dates_match = dates.contains(e.date);
-
-                let match_type = if args.all {
-                    TagMatch::All
-                } else {
-                    TagMatch::Any
-                };
-
-                let tags_match = utils::do_tags_match(
-                    &args
-                        .tags
-                        .iter()
-                        .map(|t| Tag::new(t.to_string()))
-                        .collect::<Vec<_>>(),
-                    &e.tags,
-                    match_type,
-                );
-
-                content_matches && dates_match && tags_match
-            })
-            .map(|e| utils::format_entry(e, config.journal_cfg.clone()))
-            .collect();
-
-        print_results(found, &term);
+        println!("{} entries found", found.len());
+        for entry in found {
+            println!("{entry}");
+        }
     }
-
     Ok(())
 }
