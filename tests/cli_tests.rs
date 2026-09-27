@@ -155,3 +155,33 @@ fn test_xlog_backup() {
     assert!(stdout(&dir, &["backup", "restore"]).contains("Backup restored"));
     assert_eq!(entries(&dir), original);
 }
+
+#[test]
+fn ids_remain_unique_after_deletion_and_reload() {
+    let dir = journal();
+    assert!(stdout(&dir, &["add", "first"]).contains("Entry #0 added"));
+    add_entry(&dir);
+    add_entry(&dir);
+    stdout(&dir, &["remove", "1"]);
+    assert!(stdout(&dir, &["add", "fourth"]).contains("Entry #3 added"));
+    let saved = entries(&dir);
+    let ids: Vec<_> = saved
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ids, [0, 2, 3]);
+}
+
+#[test]
+fn duplicate_ids_are_rejected_without_modifying_journal() {
+    let dir = journal();
+    add_entry(&dir);
+    let entry = entries(&dir)[0].clone();
+    let invalid = serde_json::json!([entry, entry]);
+    fs::write(dir.path().join("journal.json"), invalid.to_string()).unwrap();
+    let assertion = command(&dir).args(["add", "new"]).assert().failure();
+    assert!(String::from_utf8_lossy(&assertion.get_output().stderr).contains("Duplicate entry ID"));
+    assert_eq!(entries(&dir), invalid);
+}

@@ -83,7 +83,7 @@ pub fn load_from_path(path: PathBuf) -> JotResult<Journal> {
 
             let entries: Vec<Entry> =
                 serde_json::from_str(&content).map_err(JotError::SerdeError)?;
-            Ok(Journal::from_entries(path, entries))
+            Journal::from_entries(path, entries)
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Journal::new(path)),
         Err(e) => Err(JotError::IoError(e)),
@@ -294,11 +294,13 @@ mod tests {
 
         // Create and save a journal with one entry
         let mut journal = Journal::new(path.clone());
-        journal.add_entry(Entry::new(
-            0,
-            "Test entry".to_string(),
-            vec![Tag::new("test".to_string())],
-        ));
+        journal
+            .add_entry(Entry::new(
+                0,
+                "Test entry".to_string(),
+                vec![Tag::new("test".to_string())],
+            ))
+            .unwrap();
         save_journal(&journal).unwrap();
 
         // Load the journal and verify contents

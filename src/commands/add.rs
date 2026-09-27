@@ -18,14 +18,11 @@ pub fn execute(journal: &mut Journal, args: AddArgs, config: &Config) -> JotResu
     let tags = extract_tags(content);
     let body = extract_body(content, config);
 
-    let entry = Entry::new(journal.next_id(), body, tags);
-    journal.add_entry(entry);
+    let entry = Entry::new(0, body, tags);
+    let id = journal.add_entry(entry)?;
     storage::save_journal(journal)?;
 
-    println!(
-        "Entry {} added!",
-        format!("#{}", journal.next_id()).bold().green()
-    );
+    println!("Entry {} added!", format!("#{id}").bold().green());
 
     Ok(())
 }
