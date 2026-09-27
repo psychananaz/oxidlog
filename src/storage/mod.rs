@@ -35,15 +35,13 @@ impl Backup {
     }
 
     pub fn create(&self) -> JotResult<()> {
+        // Read first: a missing or unreadable source must not rotate away the
+        // most recent usable backup. Write replacements atomically as well.
+        let content = fs::read(&self.source_path)?;
         if self.backup_path.exists() {
-            fs::rename(&self.backup_path, &self.old_backup_path)
-                .map_err(|e| JotError::Other(format!("Failed to rename backup: {}", e).into()))?;
+            atomic_write(&self.old_backup_path, &fs::read(&self.backup_path)?)?;
         }
-
-        fs::copy(&self.source_path, &self.backup_path)
-            .map_err(|e| JotError::Other(format!("Failed to create backup: {}", e).into()))?;
-
-        Ok(())
+        atomic_write(&self.backup_path, &content)
     }
 
     pub fn restore(&self) -> JotResult<()> {
@@ -213,6 +211,19 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn failed_backup_keeps_the_existing_backup() {
+        let dir = TempDir::new().unwrap();
+        let backup = Backup::from_journal(&Journal::new(dir.path().join(JOURNAL_FILE)));
+        fs::write(&backup.backup_path, "previous backup").unwrap();
+        assert!(backup.create().is_err());
+        assert_eq!(
+            fs::read_to_string(&backup.backup_path).unwrap(),
+            "previous backup"
+        );
+        assert!(!backup.old_backup_path.exists());
+    }
 
     #[test]
     fn initialization_preserves_original_when_config_save_fails() {
