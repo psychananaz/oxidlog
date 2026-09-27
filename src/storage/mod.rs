@@ -2,13 +2,13 @@ pub mod config;
 pub mod journal;
 
 pub use journal::{Entry, Journal, Tag};
-use serde::de::Error;
 
 use crate::error::{JotError, JotResult};
 use config::Config;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const CONFIG_FILE: &str = "config.toml";
 const JOURNAL_DIR: &str = ".oxidlog";
@@ -47,14 +47,12 @@ impl Backup {
     }
 
     pub fn restore(&self) -> JotResult<()> {
-        if self.backup_path.exists() {
-            fs::copy(&self.backup_path, &self.source_path)
-                .map_err(|e| JotError::Other(format!("Failed to restore backup: {}", e).into()))?;
-        } else {
-            return Err(JotError::Other("Backup not found".into()));
-        }
-
-        Ok(())
+        // Validate before replacing the current file. Restore must work even
+        // when the current journal is corrupt or missing.
+        let content = fs::read(&self.backup_path)?;
+        let entries: Vec<Entry> = serde_json::from_slice(&content)?;
+        Journal::from_entries(self.source_path.clone(), entries)?;
+        atomic_write(&self.source_path, &content)
     }
 }
 
@@ -91,29 +89,44 @@ pub fn load_from_path(path: PathBuf) -> JotResult<Journal> {
 }
 
 pub fn save_journal(journal: &Journal) -> JotResult<()> {
-    let backup = Backup::from_journal(journal);
+    let content = serde_json::to_vec_pretty(journal.entries())?;
     if journal.path().exists() {
-        backup.create()?;
+        Backup::from_journal(journal).create()?;
     }
+    atomic_write(journal.path(), &content)
+}
 
-    // Serialize entries
-    let serialized_entries =
-        serde_json::to_string_pretty(journal.entries()).map_err(JotError::SerdeError)?;
-
-    // Write to temporary file first
-    let temp_path = journal.path().with_extension("json.tmp");
-    {
-        let mut temp_file = File::create(&temp_path).map_err(JotError::IoError)?;
-        temp_file
-            .write_all(serialized_entries.as_bytes())
-            .map_err(JotError::IoError)?;
-        temp_file.sync_all().map_err(JotError::IoError)?;
+// A unique, exclusively created sibling file keeps failed writes from
+// truncating the destination and prevents temporary-file name collisions.
+fn atomic_write(path: &Path, content: &[u8]) -> JotResult<()> {
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let (temp_path, mut file) = loop {
+        let sequence = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+        let temp_path = parent.join(format!(".xlog-{}-{sequence}.tmp", std::process::id()));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => break (temp_path, file),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    };
+    let result = (|| {
+        file.write_all(content)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temp_path, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_path);
     }
-
-    // Atomically rename temporary file to actual journal file
-    fs::rename(&temp_path, journal.path()).map_err(JotError::IoError)?;
-
-    Ok(())
+    result.map_err(Into::into)
 }
 
 /// Get the directory where the journal is stored
@@ -140,24 +153,20 @@ pub fn get_journal_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(path)
 }
 
-// Update init_journal to take config
-pub fn init_journal(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let journal_path = if get_journal_path()?.exists() {
-        get_journal_path()?
-    } else {
-        let path = get_journal_path()?;
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        path
-    };
+pub fn init_journal(config: &Config) -> JotResult<()> {
+    init_at(&get_journal_dir()?, config)
+}
 
-    // create all parent directories if they don't exist
-    fs::create_dir_all(journal_path.parent().unwrap())?;
-    fs::write(journal_path, "[]")?;
-
-    // Initialize the config file
-    save_config(config)?;
-
-    Ok(())
+fn init_at(dir: &Path, config: &Config) -> JotResult<()> {
+    fs::create_dir_all(dir)?;
+    let journal = Journal::new(dir.join(JOURNAL_FILE));
+    // Preserve existing journal bytes, including a corrupt journal, before
+    // resetting it. Failure to save configuration must not erase entries.
+    if journal.path().exists() {
+        Backup::from_journal(&journal).create()?;
+    }
+    save_config_to(&dir.join(CONFIG_FILE), config)?;
+    atomic_write(journal.path(), b"[]")
 }
 
 pub fn journal_exists() -> bool {
@@ -174,73 +183,29 @@ pub fn get_config_path() -> JotResult<PathBuf> {
     Ok(path)
 }
 
-/// Load configuration from the config file with validation
+/// Load configuration without creating directories or changing files.
 pub fn load_config() -> JotResult<Config> {
-    let config_path = get_config_path()?;
-
-    if !config_path.exists() {
-        return Ok(Config::default());
-    }
-
-    let content = fs::read_to_string(&config_path).map_err(JotError::IoError)?;
-
-    // Basic TOML validation
-    if !content.trim().starts_with('[') {
-        return Err(JotError::TomlParseError(toml::de::Error::custom(
-            "Invalid TOML format: must start with a table header",
-        )));
-    }
-
-    let config: Config = toml::from_str(&content).map_err(JotError::TomlParseError)?;
-
-    // Validate export directory path
-    if !config.journal_cfg.export_dir.is_empty() {
-        let export_path = PathBuf::from(&config.journal_cfg.export_dir);
-        if export_path.is_absolute() && !export_path.exists() {
-            fs::create_dir_all(&export_path).map_err(|e| {
-                JotError::Other(format!("Failed to create export directory: {}", e).into())
-            })?;
-        }
-    }
-
-    Ok(config)
+    load_config_from(&get_config_path()?)
 }
 
-/// Save configuration to the config file with atomic write
-pub fn save_config(config: &Config) -> JotResult<()> {
-    let config_path = get_config_path()?;
-    let temp_path = config_path.with_extension("toml.tmp");
-
-    // Create parent directories if they don't exist
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            JotError::Other(format!("Failed to create config directory: {}", e).into())
-        })?;
+fn load_config_from(path: &Path) -> JotResult<Config> {
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(toml::from_str(&content)?),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Config::default()),
+        Err(error) => Err(error.into()),
     }
+}
 
-    // Serialize config with pretty formatting
-    let content = toml::to_string_pretty(config).map_err(JotError::TomlSerializeError)?;
-
-    // Write to temporary file first
-    {
-        let mut temp_file = File::create(&temp_path).map_err(JotError::IoError)?;
-        temp_file
-            .write_all(content.as_bytes())
-            .map_err(JotError::IoError)?;
-        temp_file.sync_all().map_err(JotError::IoError)?;
+fn save_config_to(path: &Path, config: &Config) -> JotResult<()> {
+    let content = toml::to_string_pretty(config)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
     }
-
-    // Backup existing config if it exists
-    if config_path.exists() {
-        let backup_path = config_path.with_extension(format!("toml{}", BACKUP_EXTENSION));
-        fs::copy(&config_path, &backup_path)
-            .map_err(|e| JotError::Other(format!("Failed to backup config: {}", e).into()))?;
+    if path.exists() {
+        let backup_path = path.with_extension(format!("toml{BACKUP_EXTENSION}"));
+        atomic_write(&backup_path, &fs::read(path)?)?;
     }
-
-    // Atomically rename temporary file to actual config file
-    fs::rename(&temp_path, &config_path).map_err(JotError::IoError)?;
-
-    Ok(())
+    atomic_write(path, content.as_bytes())
 }
 
 #[cfg(test)]
@@ -248,6 +213,42 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn initialization_preserves_original_when_config_save_fails() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(JOURNAL_FILE);
+        fs::write(&path, "original journal").unwrap();
+        fs::create_dir(dir.path().join(CONFIG_FILE)).unwrap();
+        assert!(init_at(dir.path(), &Config::default()).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original journal");
+        assert_eq!(
+            fs::read_to_string(path.with_extension("json.bak")).unwrap(),
+            "original journal"
+        );
+    }
+
+    #[test]
+    fn initialization_creates_files_and_backs_up_before_reset() {
+        let dir = TempDir::new().unwrap();
+        init_at(dir.path(), &Config::default()).unwrap();
+        assert!(load_config_from(&dir.path().join(CONFIG_FILE)).is_ok());
+        let path = dir.path().join(JOURNAL_FILE);
+        let mut journal = load_from_path(path.clone()).unwrap();
+        journal
+            .add_entry(Entry::new(0, "keep a backup".into(), vec![]))
+            .unwrap();
+        save_journal(&journal).unwrap();
+        init_at(dir.path(), &Config::default()).unwrap();
+        assert!(load_from_path(path.clone()).unwrap().entries().is_empty());
+        assert_eq!(
+            load_from_path(path.with_extension("json.bak"))
+                .unwrap()
+                .entries()[0]
+                .body,
+            "keep a backup"
+        );
+    }
 
     fn setup_test_env() -> (TempDir, PathBuf, PathBuf) {
         let temp_dir = TempDir::new().unwrap();
@@ -266,11 +267,10 @@ mod tests {
 
         // Test saving
         fs::create_dir_all(config_path.parent().unwrap()).unwrap();
-        fs::write(&config_path, toml::to_string(&config).unwrap()).unwrap();
+        save_config_to(&config_path, &config).unwrap();
 
         // Test loading
-        let loaded_config: Config =
-            toml::from_str(&fs::read_to_string(config_path).unwrap()).unwrap();
+        let loaded_config = load_config_from(&config_path).unwrap();
         assert!(loaded_config.journal_cfg.body_tags);
     }
 

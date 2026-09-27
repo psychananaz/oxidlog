@@ -6,12 +6,23 @@ pub struct Config {
     pub journal_cfg: JournalConfig,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct JournalConfig {
     pub body_tags: bool,
     pub show_time: bool,
     #[serde(default = "default_export_dir")]
     pub export_dir: String,
+}
+
+impl Default for JournalConfig {
+    fn default() -> Self {
+        Self {
+            body_tags: false,
+            show_time: false,
+            export_dir: default_export_dir(),
+        }
+    }
 }
 
 fn default_export_dir() -> String {
@@ -27,6 +38,9 @@ mod tests {
         let config = Config::default();
         assert!(!config.journal_cfg.body_tags);
         assert!(!config.journal_cfg.show_time);
+        assert_eq!(config.journal_cfg.export_dir, "exports");
+        let parsed: Config = toml::from_str("[journal_cfg]\n").unwrap();
+        assert_eq!(parsed.journal_cfg.export_dir, config.journal_cfg.export_dir);
     }
 
     #[test]

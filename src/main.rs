@@ -1,5 +1,4 @@
 use colored::*;
-use storage::load_config;
 
 mod cli;
 mod commands;
@@ -8,23 +7,7 @@ mod storage;
 mod utils;
 
 fn main() {
-    let config = match load_config() {
-        Ok(config) => config,
-        Err(e) => {
-            eprintln!(
-                "{} {}",
-                "Error:".red().bold(),
-                format!("Failed to load config - {}", e)
-            );
-            eprintln!(
-                "{} Run 'xlog init' to create a new configuration",
-                "Tip:".cyan().bold()
-            );
-            std::process::exit(1);
-        }
-    };
-
-    if let Err(e) = cli::run(&config) {
+    if let Err(e) = cli::run() {
         let error_type = match e {
             error::JotError::_InitError(_) => "Initialization",
             error::JotError::AddError(_) => "Add Entry",

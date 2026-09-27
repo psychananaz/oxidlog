@@ -237,3 +237,43 @@ fn invalid_dates_fail_even_on_empty_journals() {
         }
     }
 }
+
+#[test]
+fn help_and_init_are_accessible_with_invalid_config() {
+    let dir = journal();
+    fs::write(dir.path().join("config.toml"), "broken = [").unwrap();
+    command(&dir).arg("--help").assert().success();
+    let assertion = command(&dir)
+        .args(["init", "--export-dir", "exports"])
+        .assert()
+        .failure();
+    assert!(String::from_utf8_lossy(&assertion.get_output().stderr)
+        .contains("Failed to get user confirmation"));
+}
+
+#[test]
+fn loading_commented_config_does_not_create_export_directory() {
+    let dir = journal();
+    let export = dir.path().join("not-created");
+    let config = format!(
+        "# valid TOML comment\n[journal_cfg]\nexport_dir = '{}'\n",
+        export.display()
+    );
+    fs::write(dir.path().join("config.toml"), config).unwrap();
+    command(&dir).arg("view").assert().success();
+    assert!(!export.exists());
+}
+
+#[test]
+fn backup_restores_a_corrupted_journal_and_rejects_corrupted_backup() {
+    let dir = journal();
+    add_entry(&dir);
+    let original = entries(&dir);
+    stdout(&dir, &["backup", "create"]);
+    fs::write(dir.path().join("journal.json"), "broken").unwrap();
+    stdout(&dir, &["backup", "restore"]);
+    assert_eq!(entries(&dir), original);
+    fs::write(dir.path().join("journal.json.bak"), "broken backup").unwrap();
+    command(&dir).args(["backup", "restore"]).assert().failure();
+    assert_eq!(entries(&dir), original);
+}

@@ -1,6 +1,5 @@
 use crate::commands::{backup, init};
-use crate::error::{JotError, JotResult};
-use crate::storage::config::Config;
+use crate::error::JotResult;
 use crate::{commands, storage};
 use clap::{Parser, Subcommand};
 
@@ -72,22 +71,9 @@ enum Commands {
     },
 }
 
-/// Runs a single command based on the parsed CLI arguments
-///
-/// # Arguments
-///
-/// * `config` - Configuration settings loaded from the config file
-///
-/// # Returns
-///
-/// Returns `JotResult<()>` indicating success or error
-///
-/// # Errors
-///
-/// Will return a `JotError` if:
-/// * Journal loading fails
-/// * Any command-specific execution errors occur
-pub fn run(config: &Config) -> JotResult<()> {
+/// Parse CLI arguments before loading any files, so help and init work even
+/// when the saved configuration is invalid.
+pub fn run() -> JotResult<()> {
     let cli = Cli::parse();
 
     // Only load journal for commands that need it
@@ -95,7 +81,7 @@ pub fn run(config: &Config) -> JotResult<()> {
         Commands::Init { args } => commands::init::execute(args),
         Commands::Add { args } => {
             let mut journal = storage::load_journal()?;
-            commands::add::execute(&mut journal, args, config)
+            commands::add::execute(&mut journal, args, &storage::load_config()?)
         }
         Commands::Remove { args } => {
             let mut journal = storage::load_journal()?;
@@ -103,7 +89,7 @@ pub fn run(config: &Config) -> JotResult<()> {
         }
         Commands::View { args } => {
             let journal = storage::load_journal()?;
-            commands::view::execute(&journal, args, config)
+            commands::view::execute(&journal, args, &storage::load_config()?)
         }
         Commands::Edit { args } => {
             let mut journal = storage::load_journal()?;
@@ -111,14 +97,14 @@ pub fn run(config: &Config) -> JotResult<()> {
         }
         Commands::Search { args } => {
             let journal = storage::load_journal()?;
-            commands::search::execute(&journal, args, config)
+            commands::search::execute(&journal, args, &storage::load_config()?)
         }
         Commands::Export { args } => {
             let mut journal = storage::load_journal()?;
-            commands::export::execute(&mut journal, args, config)
+            commands::export::execute(&mut journal, args, &storage::load_config()?)
         }
         Commands::Backup { args } => {
-            let mut journal = storage::load_journal()?;
+            let mut journal = storage::Journal::new(storage::get_journal_path()?);
             commands::backup::execute(&mut journal, args)
         }
     }
