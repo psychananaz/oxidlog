@@ -87,6 +87,7 @@ pub fn save_journal(journal: &Journal) -> AppResult<()> {
     atomic_write(journal.path(), &content)
 }
 
+/// Atomically write content to a file (make a temporary file and then rename/"move" it to the target path)
 fn atomic_write(path: &Path, content: &[u8]) -> AppResult<()> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
     let parent = path
@@ -117,6 +118,8 @@ fn atomic_write(path: &Path, content: &[u8]) -> AppResult<()> {
     }
     result.map_err(|source| AppError::file("write", path, source))
 }
+
+// Directory stuff for xdg based locations and overrides
 
 fn override_dir() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("XLOG_HOME") {
