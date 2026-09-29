@@ -1,3 +1,6 @@
+// TODO: needs massive improvements, mostly visual
+// LOOOW TAPER FADE 😐
+
 use crate::{
     error::{AppError, AppResult},
     storage::{self, Journal},
