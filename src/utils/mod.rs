@@ -144,28 +144,50 @@ fn displayed_body<'a>(entry: &Entry, body: &'a str, options: DisplayOptions) -> 
     Cow::Owned(body)
 }
 
+fn tag_list(entry: &Entry, prefix: &str) -> String {
+    entry
+        .tags
+        .iter()
+        .map(|tag| format!("{prefix}{}", tag.name).bright_yellow().to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn gutter(body: &str) -> String {
+    let bar = "│".dimmed();
+    body.lines()
+        .map(|line| {
+            if line.is_empty() {
+                format!("{bar}\n")
+            } else {
+                format!("{bar} {line}\n")
+            }
+        })
+        .collect()
+}
+
 pub fn format_with_body(entry: &Entry, options: DisplayOptions, body: &str) -> String {
-    let mut result = format!("[{:>3}] {}", entry.id, entry.date.to_string().bright_blue());
+    let dim = |text: &str| text.dimmed().to_string();
+    let mut result = format!(
+        "{} {} {}",
+        dim("╭─"),
+        format!("#{}", entry.id).bold().cyan(),
+        entry.date.to_string().bright_blue()
+    );
     if options.show_time {
         write!(
             result,
             " {}",
-            entry
-                .timestamp
-                .format("%H:%M")
-                .to_string()
-                .dimmed()
-                .underline()
+            entry.timestamp.format("%H:%M").to_string().dimmed()
         )
         .unwrap();
     }
-    if !options.inline_tags {
-        for tag in &entry.tags {
-            write!(result, " {}", tag.name.bright_yellow()).unwrap();
-        }
+    if !options.inline_tags && !entry.tags.is_empty() {
+        write!(result, " {} {}", dim("·"), tag_list(entry, "#")).unwrap();
     }
     let body = displayed_body(entry, body, options);
-    write!(result, "\n{body}\n").unwrap();
+    write!(result, "\n{}{}", gutter(&body), dim("╰─")).unwrap();
+    result.push('\n');
     result
 }
 
@@ -188,22 +210,25 @@ pub fn write_detail(
     entry: &Entry,
     options: DisplayOptions,
 ) -> io::Result<()> {
-    writeln!(output, "\n{}", "=".repeat(50))?;
-    writeln!(output, "Entry #{}", entry.id)?;
-    writeln!(output, "Date: {}", entry.date)?;
+    const WIDTH: usize = 50;
+    let rule = "─".repeat(WIDTH - 2);
+    writeln!(output, "\n╭{rule}╮")?;
     writeln!(
         output,
-        "\n{}\n",
-        displayed_body(entry, &entry.body, options)
+        "│ {} {}",
+        format!("Entry #{}", entry.id).bold().cyan(),
+        entry.date.to_string().bright_blue()
+    )?;
+    writeln!(output, "├{rule}╯")?;
+    write!(
+        output,
+        "{}",
+        gutter(&displayed_body(entry, &entry.body, options))
     )?;
     if !options.inline_tags && !entry.tags.is_empty() {
-        write!(output, "Tags:")?;
-        for tag in &entry.tags {
-            write!(output, " #{}", tag.name)?;
-        }
-        writeln!(output)?;
+        writeln!(output, "│\n│ Tags: {}", tag_list(entry, "#"))?;
     }
-    writeln!(output, "{}", "=".repeat(50))
+    writeln!(output, "╰{}", "─".repeat(WIDTH - 1))
 }
 
 #[cfg(test)]
@@ -249,7 +274,7 @@ mod tests {
                 ..DisplayOptions::default()
             },
         );
-        assert!(formatted.contains("first\n  second"));
+        assert!(formatted.contains("│ first\n│   second"));
         assert!(formatted.lines().next().unwrap().contains("unique_tag"));
         let mut output = Vec::new();
         write_detail(&mut output, &entry, DisplayOptions::default()).unwrap();
