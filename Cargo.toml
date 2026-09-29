@@ -7,18 +7,18 @@ license = "MIT"
 repository = "https://github.com/kortgrabb/oxidlog"
 
 [dependencies]
-chrono = { version = "0.4.39", features = ["serde"] }
-serde = { version = "1.0.216", features = ["derive"] }
-serde_json = "1.0.134"
-toml = "0.8.19"
+chrono = { version = "0.4.45", features = ["serde"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "1.1.6+spec-1.1.0"
 thiserror = "2.0.9"
-dirs = "5.0.1"
-clap = { version = "4.5.23", features = ["derive"] }
-colored = "2.2.0"
-dialoguer = "0.11.0"
+dirs = "7.0.0"
+clap = { version = "4.6.7", features = ["derive"] }
+colored = "3.1.1"
+dialoguer = "0.12.0"
 
 [dev-dependencies]
-tempfile = "3.14.0"
+tempfile = "3.27.0"
 assert_cmd = "2.0.4"
 
 [[bin]]
