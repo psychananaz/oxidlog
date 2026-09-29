@@ -176,8 +176,6 @@ pub fn write_list(
 ) -> io::Result<()> {
     if count == 0 {
         writeln!(output, "No entries found.")?;
-    } else {
-        writeln!(output, "{count} entries found")?;
     }
     for entry in entries {
         writeln!(output, "{entry}")?;
