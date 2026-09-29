@@ -35,8 +35,7 @@ impl Backup {
     }
 
     pub fn create(&self) -> AppResult<()> {
-        // Read first: a missing or unreadable source must not rotate away the
-        // most recent usable backup. Write replacements atomically as well.
+        // Read the current journal content to prepare for backup.
         let content = fs::read(&self.source_path).map_err(|source| {
             AppError::file("read journal for backup", &self.source_path, source)
         })?;
@@ -49,8 +48,6 @@ impl Backup {
     }
 
     pub fn restore(&self) -> AppResult<()> {
-        // Validate before replacing the current file. Restore must work even
-        // when the current journal is corrupt or missing.
         let content = fs::read(&self.backup_path)
             .map_err(|source| AppError::file("read backup", &self.backup_path, source))?;
         let entries: Vec<Entry> =
@@ -63,12 +60,10 @@ impl Backup {
     }
 }
 
-/// Load the journal from the configured location.
 pub fn load_journal() -> AppResult<Journal> {
     load_from_path(get_journal_path()?)
 }
 
-/// Missing journals are errors; creating an empty journal is explicit.
 pub fn load_from_path(path: PathBuf) -> AppResult<Journal> {
     let content = fs::read(&path).map_err(|source| {
         if source.kind() == io::ErrorKind::NotFound {
@@ -92,8 +87,6 @@ pub fn save_journal(journal: &Journal) -> AppResult<()> {
     atomic_write(journal.path(), &content)
 }
 
-// A unique, exclusively created sibling file keeps failed writes from
-// truncating the destination and prevents temporary-file name collisions.
 fn atomic_write(path: &Path, content: &[u8]) -> AppResult<()> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
     let parent = path
@@ -125,7 +118,6 @@ fn atomic_write(path: &Path, content: &[u8]) -> AppResult<()> {
     result.map_err(|source| AppError::file("write", path, source))
 }
 
-/// Directory override / debug location that keeps config and data together.
 fn override_dir() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("XLOG_HOME") {
         return Some(PathBuf::from(path));
@@ -136,7 +128,6 @@ fn override_dir() -> Option<PathBuf> {
     None
 }
 
-/// Get the directory where the journal is stored (`$XDG_DATA_HOME/oxidlog`)
 pub fn get_journal_dir() -> AppResult<PathBuf> {
     if let Some(path) = override_dir() {
         return Ok(path);
@@ -146,7 +137,6 @@ pub fn get_journal_dir() -> AppResult<PathBuf> {
         .join(APP_DIR))
 }
 
-/// Get the directory where configuration is stored (`$XDG_CONFIG_HOME/oxidlog`)
 pub fn get_config_dir() -> AppResult<PathBuf> {
     if let Some(path) = override_dir() {
         return Ok(path);
@@ -156,7 +146,6 @@ pub fn get_config_dir() -> AppResult<PathBuf> {
         .join(APP_DIR))
 }
 
-/// Get the path to the journal file
 pub fn get_journal_path() -> AppResult<PathBuf> {
     let mut path = get_journal_dir()?;
     path.push(JOURNAL_FILE);
@@ -172,8 +161,6 @@ fn init_at(dir: &Path, config_dir: &Path, config: &Config) -> AppResult<()> {
         fs::create_dir_all(d).map_err(|source| AppError::file("create directory", d, source))?;
     }
     let journal = Journal::new(dir.join(JOURNAL_FILE));
-    // Preserve existing journal bytes, including a corrupt journal, before
-    // resetting it. Failure to save configuration must not erase entries.
     if journal.path().exists() {
         Backup::from_journal(&journal).create()?;
     }
@@ -190,16 +177,12 @@ pub fn journal_exists() -> AppResult<bool> {
     }
 }
 
-// ! Config Related
-
-/// Get the path to the config file
 pub fn get_config_path() -> AppResult<PathBuf> {
     let mut path = get_config_dir()?;
     path.push(CONFIG_FILE);
     Ok(path)
 }
 
-/// Load configuration without creating directories or changing files.
 pub fn load_config() -> AppResult<Config> {
     load_config_from(&get_config_path()?)
 }
@@ -330,14 +313,12 @@ mod tests {
     fn test_save_and_load_journal() {
         let (_temp_dir, path) = setup_temp_journal();
 
-        // Create and save a journal with one entry
         let mut journal = Journal::new(path.clone());
         journal
             .add_entry("Test entry".to_string(), vec![Tag::new("test".to_string())])
             .unwrap();
         save_journal(&journal).unwrap();
 
-        // Load the journal and verify contents
         let loaded_journal = load_from_path(path).unwrap();
         assert_eq!(loaded_journal.entries().len(), 1);
         assert_eq!(loaded_journal.entries()[0].body, "Test entry");
