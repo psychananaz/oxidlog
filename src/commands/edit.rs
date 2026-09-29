@@ -1,8 +1,7 @@
 use crate::{
-    cli::input,
-    content::{parse_content, parse_tags},
     error::{AppError, AppResult},
     storage::{self, Journal},
+    utils::{self, parse_content, parse_tags},
 };
 use colored::Colorize;
 use std::io::Write as _;
@@ -17,14 +16,14 @@ pub fn execute(journal: &mut Journal, args: EditArgs) -> AppResult<()> {
         .get_entry(args.id)
         .ok_or(AppError::EntryNotFound(args.id))?;
     writeln!(std::io::stdout().lock(), "Editing entry: {}", entry.body)?;
-    let body_input = input::get_input(&format!("Enter new content [{}]: ", entry.body))?;
+    let body_input = utils::get_input(&format!("Enter new content [{}]: ", entry.body))?;
     let tags = entry
         .tags
         .iter()
         .map(|tag| tag.name.as_str())
         .collect::<Vec<_>>()
         .join(" ");
-    let tags_input = input::get_input(&format!(
+    let tags_input = utils::get_input(&format!(
         "Enter new tags [{tags}] (blank keeps, '-' clears): "
     ))?;
     let content = if body_input.is_empty() {

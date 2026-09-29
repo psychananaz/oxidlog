@@ -1,6 +1,6 @@
 use crate::{
-    content::EntryContent,
     error::{AppError, AppResult},
+    utils::EntryContent,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};

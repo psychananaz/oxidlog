@@ -2,12 +2,9 @@ use colored::*;
 
 mod cli;
 mod commands;
-mod content;
 mod error;
-mod matching;
-mod presentation;
-mod query;
 mod storage;
+mod utils;
 
 fn main() -> std::process::ExitCode {
     use std::io::Write;

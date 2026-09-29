@@ -1,7 +1,7 @@
 use crate::{
-    content::parse_content,
     error::AppResult,
     storage::{self, Journal},
+    utils::parse_content,
 };
 use colored::Colorize;
 use std::io::Write as _;
