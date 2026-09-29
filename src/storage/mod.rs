@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const CONFIG_FILE: &str = "config.toml";
-const JOURNAL_DIR: &str = ".oxidlog";
+const APP_DIR: &str = "oxidlog";
 const JOURNAL_FILE: &str = "journal.json";
 const BACKUP_EXTENSION: &str = ".bak";
 
@@ -125,21 +125,35 @@ fn atomic_write(path: &Path, content: &[u8]) -> AppResult<()> {
     result.map_err(|source| AppError::file("write", path, source))
 }
 
-/// Get the directory where the journal is stored
-pub fn get_journal_dir() -> AppResult<PathBuf> {
+/// Directory override / debug location that keeps config and data together.
+fn override_dir() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("XLOG_HOME") {
-        return Ok(PathBuf::from(path));
+        return Some(PathBuf::from(path));
     }
-
-    let mut path;
     if cfg!(debug_assertions) {
-        path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    } else {
-        path = dirs::home_dir().ok_or(AppError::HomeUnavailable)?;
+        return Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".oxidlog"));
     }
+    None
+}
 
-    path.push(JOURNAL_DIR);
-    Ok(path)
+/// Get the directory where the journal is stored (`$XDG_DATA_HOME/oxidlog`)
+pub fn get_journal_dir() -> AppResult<PathBuf> {
+    if let Some(path) = override_dir() {
+        return Ok(path);
+    }
+    Ok(dirs::data_dir()
+        .ok_or(AppError::HomeUnavailable)?
+        .join(APP_DIR))
+}
+
+/// Get the directory where configuration is stored (`$XDG_CONFIG_HOME/oxidlog`)
+pub fn get_config_dir() -> AppResult<PathBuf> {
+    if let Some(path) = override_dir() {
+        return Ok(path);
+    }
+    Ok(dirs::config_dir()
+        .ok_or(AppError::HomeUnavailable)?
+        .join(APP_DIR))
 }
 
 /// Get the path to the journal file
@@ -150,18 +164,20 @@ pub fn get_journal_path() -> AppResult<PathBuf> {
 }
 
 pub fn init_journal(config: &Config) -> AppResult<()> {
-    init_at(&get_journal_dir()?, config)
+    init_at(&get_journal_dir()?, &get_config_dir()?, config)
 }
 
-fn init_at(dir: &Path, config: &Config) -> AppResult<()> {
-    fs::create_dir_all(dir).map_err(|source| AppError::file("create directory", dir, source))?;
+fn init_at(dir: &Path, config_dir: &Path, config: &Config) -> AppResult<()> {
+    for d in [dir, config_dir] {
+        fs::create_dir_all(d).map_err(|source| AppError::file("create directory", d, source))?;
+    }
     let journal = Journal::new(dir.join(JOURNAL_FILE));
     // Preserve existing journal bytes, including a corrupt journal, before
     // resetting it. Failure to save configuration must not erase entries.
     if journal.path().exists() {
         Backup::from_journal(&journal).create()?;
     }
-    save_config_to(&dir.join(CONFIG_FILE), config)?;
+    save_config_to(&config_dir.join(CONFIG_FILE), config)?;
     atomic_write(journal.path(), b"[]")
 }
 
@@ -178,7 +194,7 @@ pub fn journal_exists() -> AppResult<bool> {
 
 /// Get the path to the config file
 pub fn get_config_path() -> AppResult<PathBuf> {
-    let mut path = get_journal_dir()?;
+    let mut path = get_config_dir()?;
     path.push(CONFIG_FILE);
     Ok(path)
 }
@@ -239,7 +255,7 @@ mod tests {
         let path = dir.path().join(JOURNAL_FILE);
         fs::write(&path, "original journal").unwrap();
         fs::create_dir(dir.path().join(CONFIG_FILE)).unwrap();
-        assert!(init_at(dir.path(), &Config::default()).is_err());
+        assert!(init_at(dir.path(), dir.path(), &Config::default()).is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), "original journal");
         assert_eq!(
             fs::read_to_string(path.with_extension("json.bak")).unwrap(),
@@ -250,13 +266,13 @@ mod tests {
     #[test]
     fn initialization_creates_files_and_backs_up_before_reset() {
         let dir = TempDir::new().unwrap();
-        init_at(dir.path(), &Config::default()).unwrap();
+        init_at(dir.path(), dir.path(), &Config::default()).unwrap();
         assert!(load_config_from(&dir.path().join(CONFIG_FILE)).is_ok());
         let path = dir.path().join(JOURNAL_FILE);
         let mut journal = load_from_path(path.clone()).unwrap();
         journal.add_entry("keep a backup".into(), vec![]).unwrap();
         save_journal(&journal).unwrap();
-        init_at(dir.path(), &Config::default()).unwrap();
+        init_at(dir.path(), dir.path(), &Config::default()).unwrap();
         assert!(load_from_path(path.clone()).unwrap().entries().is_empty());
         assert_eq!(
             load_from_path(path.with_extension("json.bak"))
@@ -329,17 +345,19 @@ mod tests {
     }
 
     #[test]
-    fn test_get_journal_dir() {
-        let dir = get_journal_dir().unwrap();
+    fn test_xdg_dirs() {
+        let data = get_journal_dir().unwrap();
+        let config = get_config_dir().unwrap();
         if let Some(path) = std::env::var_os("XLOG_HOME") {
-            assert_eq!(dir, PathBuf::from(path));
+            assert_eq!(data, PathBuf::from(&path));
+            assert_eq!(config, PathBuf::from(path));
         } else if cfg!(debug_assertions) {
-            assert_eq!(
-                dir,
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(JOURNAL_DIR)
-            );
+            let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".oxidlog");
+            assert_eq!(data, dev);
+            assert_eq!(config, dev);
         } else {
-            assert_eq!(dir, dirs::home_dir().unwrap().join(JOURNAL_DIR));
+            assert_eq!(data, dirs::data_dir().unwrap().join(APP_DIR));
+            assert_eq!(config, dirs::config_dir().unwrap().join(APP_DIR));
         }
     }
 }

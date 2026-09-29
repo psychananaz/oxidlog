@@ -1,4 +1,4 @@
-# Welcome to oxidlog docs
+# Using OxidLog
 
 ## Basic usage
 
@@ -12,6 +12,6 @@ Run `xlog help` to get an overview of all the available commands.
 You can also run `xlog help [command]` to view all of the options in detail that can be passed.
 
 ## Config
-There is a config file automatically created in `~/.oxidlog` or wherever you made the journal.
+There is a config file automatically created at `$XDG_CONFIG_HOME/oxidlog/config.toml` (default `~/.config/oxidlog/`); the journal lives in `$XDG_DATA_HOME/oxidlog/` (default `~/.local/share/oxidlog/`). Set `XLOG_HOME` to keep both in one directory.
 
-[More docs are coming soon]
+[More docs are coming soon] (cap)
