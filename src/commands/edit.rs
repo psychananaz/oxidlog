@@ -15,8 +15,13 @@ pub fn execute(journal: &mut Journal, args: EditArgs) -> AppResult<()> {
     let entry = journal
         .get_entry(args.id)
         .ok_or(AppError::EntryNotFound(args.id))?;
-    writeln!(std::io::stdout().lock(), "Editing entry: {}", entry.body)?;
-    let body_input = utils::get_input(&format!("Enter new content [{}]: ", entry.body))?;
+    writeln!(
+        std::io::stdout().lock(),
+        "Editing entry: \n\n{}\n",
+        entry.body
+    )?;
+    // TODO: don't process shift-enter to allow multi-line input
+    let body_input = utils::get_input(&format!("Enter new content:\n"))?;
     let tags = entry
         .tags
         .iter()
@@ -24,7 +29,7 @@ pub fn execute(journal: &mut Journal, args: EditArgs) -> AppResult<()> {
         .collect::<Vec<_>>()
         .join(" ");
     let tags_input = utils::get_input(&format!(
-        "Enter new tags [{tags}] (blank keeps, '-' clears): "
+        "Enter new tags [{tags}] ('-' to clear, blank to leave unchanged): "
     ))?;
     let content = if body_input.is_empty() {
         None
