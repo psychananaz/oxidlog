@@ -1,5 +1,5 @@
 // TODO: maybe move this to a separate module rather than keeping it in utils
-
+z
 use crate::{
     error::{AppError, AppResult},
     storage::{Entry, Tag},
@@ -77,17 +77,6 @@ pub enum TagMatch {
     All, // AND operation
 }
 
-/// Checks if the tags in the query match the tags in the entry based on the match type.
-///
-/// # Arguments
-///
-/// * `query_tags` - A slice of `Tag` representing the tags to query.
-/// * `entry_tags` - A slice of `Tag` representing the tags in the entry.
-/// * `match_type` - A `TagMatch` enum indicating whether to match any or all tags.
-///
-/// # Returns
-///
-/// A boolean indicating whether the tags match.
 pub fn do_tags_match(query_tags: &[Tag], entry_tags: &[Tag], match_type: TagMatch) -> bool {
     if query_tags.is_empty() {
         return true;
@@ -99,15 +88,6 @@ pub fn do_tags_match(query_tags: &[Tag], entry_tags: &[Tag], match_type: TagMatc
     }
 }
 
-/// Parses a date string in the format "YYYY-MM-DD" into a `NaiveDate` struct.
-///
-/// # Arguments
-///
-/// * `date` - A string slice containing the date in "YYYY-MM-DD" format.
-///
-/// # Returns
-///
-/// A `NaiveDate` struct representing the parsed date.
 pub fn parse_date(date: &str) -> Result<chrono::NaiveDate, chrono::ParseError> {
     chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
 }
