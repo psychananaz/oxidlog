@@ -1,7 +1,5 @@
 use std::{borrow::Cow, ops::Range};
 
-/// A prepared query. Matches refer to byte ranges in the original body, never
-/// in lowercased or ANSI-formatted output.
 pub struct TextQuery {
     term: String,
     case_sensitive: bool,
